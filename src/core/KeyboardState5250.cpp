@@ -63,7 +63,9 @@ void KeyboardState5250::advanceToNextField(bool forward) {
         // must be skipped, otherwise Tab gets stuck on each colour boundary
         // before ever reaching the next input field (e.g. the password field).
         if (c.isFA && !c.isProtected() && !c.isSkip()) {
-            screen_.setCursor((pos + 1) % screen_.size());
+            int target = (pos + 1) % screen_.size();
+            if (!forward && target == cur) continue;
+            screen_.setCursor(target);
             return;
         }
     }

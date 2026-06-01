@@ -318,6 +318,15 @@
     if (_userClosed) return;
     _userClosed = YES;
     if (_session) _session->disconnect();
+
+    // Detach the view from the engine objects before the controller (and the
+    // unique_ptrs it owns) can be deallocated.  AppKit may still issue one
+    // final drawRect: as part of the window-close transaction, and without
+    // this the view would dereference freed ScreenBuffer/Keyboard pointers.
+    [_termView setScreenBuffer:(x3270::ScreenBuffer*)nullptr
+                keyboardState:(x3270::KeyboardState*)nullptr];
+    [_termView setGraphicsBuffer:nullptr];
+
     if (self.onClosed) self.onClosed();
 }
 

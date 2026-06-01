@@ -48,7 +48,7 @@
     __block CGFloat curY = 304;
 
     // ── Header: app name, version and author ──────────────────────────────────
-    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.7.1";
+    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.7.2";
 
     NSTextField *appName = [NSTextField labelWithString:@"DX3270"];
     appName.font = [NSFont boldSystemFontOfSize:16];
