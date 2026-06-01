@@ -26,6 +26,9 @@ If you work in Mainframe or IBM i and you're tired of paying for the privilege, 
 
 *ISPF 8.1 Primary Option Menu on z/OS — connected to IBM ZExplore mainframe at 204.90.115.200:623*
 
+![ISPF Primary Option Menu running inside DX3270 and i Series in multisession](screenshots/screenshot_MULTI.png)
+*Two sessions side by side — z/OS on the left, IBM i on the right. Both running ISPF Primary Option Menu.*
+
 ---
 
 ## TN5250 — IBM i / AS400 Support
@@ -177,7 +180,7 @@ The terminal window opens. Type your credentials at the logon screen. ISPF and T
 | `Return` | Enter (AID) |
 | `Escape` | Reset (unlock keyboard) |
 | `Option`+`Escape` | Clear screen |
-| `Tab` / `Shift`+`Tab` | Next / previous field |
+| `Tab` / `Alt`+`Tab` | Next / previous field |
 | `Insert` | Toggle insert mode |
 | `Option`+`Delete` | Erase to End of Field |
 | `Option`+`E` | Erase Input (all unprotected fields) |
@@ -271,6 +274,13 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 ---
 
 ## Version History
+
+### v1.7.2 — 2026-06-01
+
+**Keyboard fix**
+
+- **Fixed: back-tab did not step to the previous input field** — `advanceToNextField` walked the screen by a single position and stopped at the first field-attribute byte it hit. When the cursor sat at the first character of a field, the FA immediately before it *was* that field's own start byte, so the function set the cursor right back to where it already was. Both `KeyboardState::advanceToNextField` (3270) and `KeyboardState5250::advanceToNextField` (5250) now skip an FA whose successor equals the current cursor when scanning backward, so back-tab correctly lands on the first character of the previous unprotected field.
+- **Changed: back-tab keystroke is now `Alt`+`Tab`** — `Shift`+`Tab` is intercepted by `NSWindow` for its built-in key-view focus cycling and cannot be bound reliably. Back-tab is now `Alt`+`Tab` (the `⌥` Option key), which is delivered to the view unmodified. The Keyboard Map and the in-app **Keyboard Shortcuts** window have been updated to match.
 
 ### v1.7.1 — 2026-06-01
 

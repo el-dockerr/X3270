@@ -620,7 +620,7 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     static dispatch_once_t vOnce;
     dispatch_once(&vOnce, ^{
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.7.1";
+        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.7.2";
         NSString *b = info[@"CFBundleVersion"] ?: @"1";
         versionStr = [NSString stringWithFormat:@"DX3270 v%@ build %@  \u2014  \u00a9 2026 Swen Skalski", v, b];
     });
@@ -689,7 +689,7 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
             handled = _kbd5250->handleEnter();
         }
         else if (key == '\t') {
-            handled = _kbd5250->handleTab(shiftDown);
+            handled = _kbd5250->handleTab(altDown);  // Alt+Tab = BackTab
         }
         else if (key == 27) {
             handled = _kbd5250->handleAttn(); // Escape = Attention in 5250
@@ -761,9 +761,9 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
         if (shiftDown) handled = _kbd->handleNewLine();
         else           handled = _kbd->handleEnter();
     }
-    // Tab / BackTab
+    // Tab / BackTab (Alt+Tab = previous field; Shift+Tab is consumed by NSWindow)
     else if (key == '\t') {
-        handled = _kbd->handleTab(shiftDown);
+        handled = _kbd->handleTab(altDown);
     }
     // Backspace
     else if (key == NSBackspaceCharacter || key == NSDeleteCharacter) {

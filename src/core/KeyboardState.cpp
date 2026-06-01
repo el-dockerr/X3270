@@ -53,8 +53,12 @@ void KeyboardState::advanceToNextField(bool forward) {
         int pos = (cur + delta * i + screen_.size() * 2) % screen_.size();
         const Cell& c = screen_.at(pos);
         if (c.isFA && !c.isSkip()) {
-            // Move to the character position after the FA
-            screen_.setCursor((pos + 1) % screen_.size());
+            int target = (pos + 1) % screen_.size();
+            // BackTab: if we are already at the first character of this
+            // field (target == cur), this is the *current* field's FA --
+            // keep scanning backward to find the previous input field.
+            if (!forward && target == cur) continue;
+            screen_.setCursor(target);
             return;
         }
     }
