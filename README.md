@@ -4,7 +4,9 @@ A native macOS (ARM - Apple Silicon + Intel) **TN3270E and TN5250** terminal emu
 Built entirely in C++ and Objective-C++ on top of native Cocoa, CoreText and OpenSSL.  
 **No license fee. No Java. No X11.**
 
-[![Support this project](https://img.shields.io/badge/Support%20this%20project-♥-pink?style=for-the-badge)](https://buy.stripe.com/7sY9AT3VMfKi53942m3VC05)
+[![Support this project](https://img.shields.io/badge/Support%20this%20project-♥-pink?style=for-the-badge)](https://buy.stripe.com/7sY9AT3VMfKi53942m3VC05)*
+
+For more informations about sponsoring and supporting the project, see the [Support section](#support-this-project) below.
 
 ---
 
@@ -426,6 +428,25 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 
 **Initial public release** — basic TN3270E support, TLS support, ISPF Query Reply support, CoreText rendering, keyboard input, and a simple Connect dialog.
 
+
+---
+
+## Support this project
+
+DX3270 is free, open-source software — no license fee, no subscription, no Java.  
+If you find it useful, any support is genuinely appreciated and helps keep the project going.
+
+### Individual support
+
+[![Support this project](https://img.shields.io/badge/Support%20this%20project-♥-pink?style=for-the-badge)](https://buy.stripe.com/7sY9AT3VMfKi53942m3VC05)
+
+A one-time donation via the Stripe link above is the simplest way to say thanks.
+
+### Corporate sponsorship
+
+If your company relies on DX3270 for day-to-day mainframe or IBM i work, consider becoming a **corporate sponsor**. Sponsorship helps fund ongoing development, bug fixes, new features, and long-term maintenance.
+
+Interested? Reach out by email: **[kalski.swen@gmail.com](mailto:kalski.swen@gmail.com)**
 
 ---
 
