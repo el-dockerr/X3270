@@ -4,7 +4,7 @@ A native macOS (ARM - Apple Silicon + Intel) **TN3270E and TN5250** terminal emu
 Built entirely in C++ and Objective-C++ on top of native Cocoa, CoreText and OpenSSL.  
 **No license fee. No Java. No X11.**
 
-[![Support this project](https://img.shields.io/badge/Support%20this%20project-♥-pink?style=for-the-badge)](https://buy.stripe.com/7sY9AT3VMfKi53942m3VC05)*
+[![Support this project](https://img.shields.io/badge/Support%20this%20project-♥-pink?style=for-the-badge)](https://buy.stripe.com/7sY9AT3VMfKi53942m3VC05)
 
 For more informations about sponsoring and supporting the project, see the [Support section](#support-this-project) below.
 
