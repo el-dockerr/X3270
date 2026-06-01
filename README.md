@@ -26,7 +26,7 @@ If you work in Mainframe or IBM i and you're tired of paying for the privilege, 
 
 *ISPF 8.1 Primary Option Menu on z/OS — connected to IBM ZExplore mainframe at 204.90.115.200:623*
 
-![ISPF Primary Option Menu running inside DX3270 and i Series in multisession](screenshots/screenshot_MULTI.png)
+![ISPF Primary Option Menu running inside DX3270 and i Series in multisession](screenshots/Screenshot_MULTI.png)
 *Two sessions side by side — z/OS on the left, IBM i on the right. Both running ISPF Primary Option Menu.*
 
 ---
