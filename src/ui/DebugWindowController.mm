@@ -1,14 +1,16 @@
 #import "DebugWindowController.h"
 #import <AppKit/AppKit.h>
 #import <float.h>
+#include "EbcdicCodec.h"
 
 static const CGFloat kFontSize = 11.0;
 
 @implementation DebugWindowController {
-    NSTextView      *_textView;
-    NSFont          *_monoFont;
-    NSFont          *_boldFont;
-    NSDateFormatter *_dateFmt;
+    NSTextView         *_textView;
+    NSFont             *_monoFont;
+    NSFont             *_boldFont;
+    NSDateFormatter    *_dateFmt;
+    x3270::EbcdicCodec  _codec;   // used to decode EBCDIC bytes in the right column
 }
 
 // ── Initialisation ────────────────────────────────────────────────────────────
@@ -97,6 +99,13 @@ static const CGFloat kFontSize = 11.0;
     [content addSubview:sv];
 }
 
+// ── Configuration ────────────────────────────────────────────────────────────
+
+- (void)configureCodePage:(int)codePage herculesBrackets:(BOOL)hb {
+    _codec.setCodePage((x3270::CodePage)codePage);
+    _codec.setHerculesBrackets(hb);
+}
+
 // ── Public API (thread-safe) ──────────────────────────────────────────────────
 
 - (void)appendBytes:(const uint8_t *)bytes
@@ -145,8 +154,10 @@ static const CGFloat kFontSize = 11.0;
             if (j < rowLen) {
                 uint8_t b = buf[offset + j];
                 [hexPart appendFormat:@"%02X ", b];
-                [ascPart appendFormat:@"%c",
-                 (b >= 0x20 && b < 0x7F) ? (char)b : '.'];
+                uint16_t u = _codec.toUnicode(b);
+                [ascPart appendString:(u >= 0x20 && u != 0x7F)
+                    ? [NSString stringWithFormat:@"%C", u]
+                    : @"."];
             } else {
                 [hexPart appendString:@"   "];
                 [ascPart appendString:@" "];

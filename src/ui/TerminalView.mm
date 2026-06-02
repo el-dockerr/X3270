@@ -8,6 +8,11 @@
 /// NSUserDefaults key – BOOL; YES = use bundled IBM 3270 font
 NSString * const kPref3270FontEnabled = @"use3270Font";
 
+/// NSUserDefaults key – BOOL; YES = render Hercules-style bracket bytes
+/// (0xAD/0xBD and 0x4A/0x5A) as '[' / ']' on display. Outbound keystrokes
+/// still use the canonical CP037 0xBA/0xBB so the host can store them.
+NSString * const kPrefHerculesBrackets = @"herculesBrackets";
+
 // ── 3270-font loader (called once) ───────────────────────────────────────────
 // Registers all three weight variants from the app bundle's Resources/fonts/
 // folder with Core Text so they can be loaded by name.
@@ -168,6 +173,7 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
 - (instancetype)initWithFrame:(NSRect)frame {
     if ((self = [super initWithFrame:frame])) {
         _codec = x3270::EbcdicCodec(x3270::CodePage::CP037);
+        _codec.setHerculesBrackets([[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets]);
         _cursorVisible = YES;
         _rows = 24;  // default; updated when screen buffer is attached
         _cols = 80;
@@ -216,8 +222,14 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
     }
 }
 
+- (void)setCodePage:(x3270::CodePage)codePage {
+    _codec.setCodePage(codePage);
+    [self setNeedsDisplay:YES];
+}
+
 - (void)userDefaultsDidChange:(NSNotification *)note {
     [self applyFontFromPreferences];
+    _codec.setHerculesBrackets([[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets]);
     [self recalcCellSize];
     [self setNeedsDisplay:YES];
     // Resize the window to the new preferred size (cell dimensions may have changed)
@@ -620,7 +632,7 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     static dispatch_once_t vOnce;
     dispatch_once(&vOnce, ^{
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.7.2";
+        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.7.3";
         NSString *b = info[@"CFBundleVersion"] ?: @"1";
         versionStr = [NSString stringWithFormat:@"DX3270 v%@ build %@  \u2014  \u00a9 2026 Swen Skalski", v, b];
     });

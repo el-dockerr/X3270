@@ -30,6 +30,17 @@ public:
     void setCodePage(CodePage cp);
     CodePage codePage() const { return cp_; }
 
+    /// Hercules / CP1047-host compatibility. When enabled:
+    ///   * Inbound (toUnicode):  0xAD or 0x4A → '[' ; 0xBD or 0x5A → ']'
+    ///   * Outbound (fromAscii): '[' → 0xAD ; ']' → 0xBD
+    /// This matches the bracket positions used by CP1047, the host code page on
+    /// Hercules-MVS-TK5 and most modern z/OS systems. Note: ISPF EDIT may still
+    /// blank out brackets in its data row because they fall outside ISPF's
+    /// "displayable character set"; HEX ON or BROWSE confirms the bytes are
+    /// stored correctly.
+    void setHerculesBrackets(bool enabled);
+    bool herculesBrackets() const { return herculesBrackets_; }
+
     // Special EBCDIC values (code-page independent)
     static constexpr uint8_t EBCDIC_NUL   = 0x00;
     static constexpr uint8_t EBCDIC_SPACE = 0x40;
@@ -40,6 +51,7 @@ public:
 
 private:
     CodePage cp_;
+    bool     herculesBrackets_ { false };
     const uint16_t* toUnicodeTable_   { nullptr }; // [256]
     const uint8_t*  fromAsciiTable_   { nullptr }; // [128]
 

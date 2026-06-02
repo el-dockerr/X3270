@@ -78,21 +78,39 @@
         [self buildEngineObjects];
         [self buildUI];
         [self startNetworkConnection];
+
+        [[NSNotificationCenter defaultCenter]
+            addObserver:self
+               selector:@selector(userDefaultsDidChange:)
+                   name:NSUserDefaultsDidChangeNotification
+                 object:nil];
     }
     return self;
 }
 
 - (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
     if (_session) _session->disconnect();
     if (_networkThread.joinable()) _networkThread.detach();
     _debugWC = nil;
+}
+
+- (void)userDefaultsDidChange:(NSNotification *)note {
+    BOOL hb = [[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets];
+    if (_codec) {
+        _codec->setHerculesBrackets(hb);
+    }
+    [_debugWC configureCodePage:(int)_codePage herculesBrackets:hb];
 }
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 - (void)buildEngineObjects {
     _screen = std::make_unique<x3270::ScreenBuffer>(_model);
     _codec  = std::make_unique<x3270::EbcdicCodec>(_codePage);
+    _codec->setHerculesBrackets([[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets]);
     _debugWC = [[DebugWindowController alloc] init];
+    [_debugWC configureCodePage:(int)_codePage
+               herculesBrackets:[[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets]];
 
     __weak TerminalWindowController *weakSelf = self;
 
@@ -268,6 +286,7 @@
 - (void)buildUI {
     _termView = [[TerminalView alloc] initWithFrame:self.window.contentView.bounds];
     _termView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [_termView setCodePage:_codePage];
 
     // Wire the appropriate keyboard state to the terminal view
     if (_kbd3270) {
