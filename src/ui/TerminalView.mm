@@ -222,6 +222,11 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
     }
 }
 
+- (void)setCodePage:(x3270::CodePage)codePage {
+    _codec.setCodePage(codePage);
+    [self setNeedsDisplay:YES];
+}
+
 - (void)userDefaultsDidChange:(NSNotification *)note {
     [self applyFontFromPreferences];
     _codec.setHerculesBrackets([[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets]);

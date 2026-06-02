@@ -96,9 +96,11 @@
 }
 
 - (void)userDefaultsDidChange:(NSNotification *)note {
+    BOOL hb = [[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets];
     if (_codec) {
-        _codec->setHerculesBrackets([[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets]);
+        _codec->setHerculesBrackets(hb);
     }
+    [_debugWC configureCodePage:(int)_codePage herculesBrackets:hb];
 }
 
 // ── Engine ────────────────────────────────────────────────────────────────────
@@ -107,6 +109,8 @@
     _codec  = std::make_unique<x3270::EbcdicCodec>(_codePage);
     _codec->setHerculesBrackets([[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets]);
     _debugWC = [[DebugWindowController alloc] init];
+    [_debugWC configureCodePage:(int)_codePage
+               herculesBrackets:[[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets]];
 
     __weak TerminalWindowController *weakSelf = self;
 
@@ -282,6 +286,7 @@
 - (void)buildUI {
     _termView = [[TerminalView alloc] initWithFrame:self.window.contentView.bounds];
     _termView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [_termView setCodePage:_codePage];
 
     // Wire the appropriate keyboard state to the terminal view
     if (_kbd3270) {

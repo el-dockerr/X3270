@@ -4,6 +4,7 @@
 #include "KeyboardState.h"
 #include "KeyboardState5250.h"
 #include "GraphicsBuffer.h"
+#include "EbcdicCodec.h"
 
 /// NSUserDefaults key – BOOL; YES = use bundled IBM 3270 font (by Ricardo Bánffy)
 extern NSString * const kPref3270FontEnabled;
@@ -13,6 +14,9 @@ extern NSString * const kPrefHerculesBrackets;
 /// Core Text.  It also handles all keyboard input and forwards it to
 /// whichever keyboard state (TN3270 or TN5250) is active.
 @interface TerminalView : NSView
+
+/// Set the EBCDIC code page used for display rendering.
+- (void)setCodePage:(x3270::CodePage)codePage;
 
 /// Wire up a TN3270 engine (sets 3270 keyboard state).
 - (void)setScreenBuffer:(x3270::ScreenBuffer*)screen
