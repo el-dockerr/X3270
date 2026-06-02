@@ -277,6 +277,14 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 
 ## Version History
 
+### v1.7.3 — 2026-06-02
+
+**Field navigation & Hercules / CP1047 bracket compatibility**
+
+- **Fixed: Tab / Alt-Tab stopped on protected fields** — `KeyboardState::advanceToNextField` skipped only auto-skip cells (protected + numeric), so Tab/BackTab landed on plain protected fields too. The 3270 keyboard now skips any field whose attribute has the `FA_PROTECTED` bit set, matching the existing `KeyboardState5250` behaviour. Tab and Alt-Tab now move the cursor only between unprotected (input) fields.
+- **New: Hercules-style EBCDIC bracket compatibility option** — `Preferences → Compatibility → Display Hercules-style EBCDIC brackets as [ ]`. When enabled, the EBCDIC codec maps inbound `0xAD` / `0xBD` (CP1047 native bracket bytes) and `0x4A` / `0x5A` to `[` and `]` on display, and outbound keystrokes for `[` / `]` are sent as `0xAD` / `0xBD` so they are stored natively on a CP1047 host. Wired through `EbcdicCodec::setHerculesBrackets`, `kPrefHerculesBrackets` (NSUserDefaults), and applied in both the `TerminalView` rendering codec and the `TerminalWindowController` engine codec; both observe `NSUserDefaultsDidChangeNotification` and update live.
+- **Note on ISPF EDIT under TK5** — ISPF EDIT scrubs `[` and `]` out of its data row before transmission because they fall outside its "displayable character set", emitting `SBA + SF protected` orders at those positions. The toggle does the right thing at the codec level (anything actually on the wire as `0xAD/0xBD/0x4A/0x5A` renders as a bracket), but it cannot recover bytes the host never sends. Use BROWSE or HEX ON to confirm the file's stored bytes; compilers and other tools that read the file directly see the brackets correctly.
+
 ### v1.7.2 — 2026-06-01
 
 **Keyboard fix**
