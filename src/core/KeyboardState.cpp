@@ -52,7 +52,7 @@ void KeyboardState::advanceToNextField(bool forward) {
     for (int i = 1; i <= screen_.size(); ++i) {
         int pos = (cur + delta * i + screen_.size() * 2) % screen_.size();
         const Cell& c = screen_.at(pos);
-        if (c.isFA && !c.isSkip()) {
+        if (c.isFA && !c.isProtected()) {
             int target = (pos + 1) % screen_.size();
             // BackTab: if we are already at the first character of this
             // field (target == cur), this is the *current* field's FA --

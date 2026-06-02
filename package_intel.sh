@@ -21,7 +21,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 APP_NAME="DX3270"
-VERSION="1.7.2"
+VERSION="1.7.3"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 ARCH="x86_64"
 DMG_NAME="${APP_NAME}-${VERSION}-build${BUILD_NUMBER}-Intel"

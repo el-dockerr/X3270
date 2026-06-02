@@ -30,6 +30,12 @@ public:
     void setCodePage(CodePage cp);
     CodePage codePage() const { return cp_; }
 
+    /// Hercules compatibility: map EBCDIC 0xAD/0xBD to '['/']' (and the reverse
+    /// on ASCII→EBCDIC input). MVS source files under Hercules/TK5 frequently
+    /// store the CP1047 bracket bytes inside an otherwise CP037 stream.
+    void setHerculesBrackets(bool enabled);
+    bool herculesBrackets() const { return herculesBrackets_; }
+
     // Special EBCDIC values (code-page independent)
     static constexpr uint8_t EBCDIC_NUL   = 0x00;
     static constexpr uint8_t EBCDIC_SPACE = 0x40;
@@ -40,6 +46,7 @@ public:
 
 private:
     CodePage cp_;
+    bool     herculesBrackets_ { false };
     const uint16_t* toUnicodeTable_   { nullptr }; // [256]
     const uint8_t*  fromAsciiTable_   { nullptr }; // [128]
 

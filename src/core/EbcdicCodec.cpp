@@ -208,12 +208,24 @@ void EbcdicCodec::selectTables() {
     }
 }
 
+void EbcdicCodec::setHerculesBrackets(bool enabled) {
+    herculesBrackets_ = enabled;
+}
+
 uint16_t EbcdicCodec::toUnicode(uint8_t ebcdic) const {
+    if (herculesBrackets_) {
+        if (ebcdic == 0xAD) return 0x005B; // '['
+        if (ebcdic == 0xBD) return 0x005D; // ']'
+    }
     return toUnicodeTable_[ebcdic];
 }
 
 uint8_t EbcdicCodec::fromAscii(uint8_t ascii) const {
     if (ascii >= 128) return 0x3F; // '?' in EBCDIC
+    if (herculesBrackets_) {
+        if (ascii == '[') return 0xAD;
+        if (ascii == ']') return 0xBD;
+    }
     return fromAsciiTable_[ascii];
 }
 
@@ -235,7 +247,7 @@ std::string EbcdicCodec::ebcdicToUtf8(const uint8_t* data, size_t len) const {
     std::string result;
     result.reserve(len);
     for (size_t i = 0; i < len; ++i) {
-        uint32_t cp = toUnicodeTable_[data[i]];
+        uint32_t cp = toUnicode(data[i]);
         if (cp == 0 && data[i] != 0) cp = 0xFFFD; // replacement char
         appendUtf8(result, cp);
     }
