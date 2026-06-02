@@ -30,9 +30,14 @@ public:
     void setCodePage(CodePage cp);
     CodePage codePage() const { return cp_; }
 
-    /// Hercules compatibility: map EBCDIC 0xAD/0xBD to '['/']' (and the reverse
-    /// on ASCII→EBCDIC input). MVS source files under Hercules/TK5 frequently
-    /// store the CP1047 bracket bytes inside an otherwise CP037 stream.
+    /// Hercules / CP1047-host compatibility. When enabled:
+    ///   * Inbound (toUnicode):  0xAD or 0x4A → '[' ; 0xBD or 0x5A → ']'
+    ///   * Outbound (fromAscii): '[' → 0xAD ; ']' → 0xBD
+    /// This matches the bracket positions used by CP1047, the host code page on
+    /// Hercules-MVS-TK5 and most modern z/OS systems. Note: ISPF EDIT may still
+    /// blank out brackets in its data row because they fall outside ISPF's
+    /// "displayable character set"; HEX ON or BROWSE confirms the bytes are
+    /// stored correctly.
     void setHerculesBrackets(bool enabled);
     bool herculesBrackets() const { return herculesBrackets_; }
 

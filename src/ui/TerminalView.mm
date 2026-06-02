@@ -8,9 +8,9 @@
 /// NSUserDefaults key – BOOL; YES = use bundled IBM 3270 font
 NSString * const kPref3270FontEnabled = @"use3270Font";
 
-/// NSUserDefaults key – BOOL; YES = map EBCDIC 0xAD/0xBD to '['/']'
-/// (workaround for Hercules/MVS-TK5 source files that store the CP1047
-/// bracket bytes inside an otherwise CP037 data stream).
+/// NSUserDefaults key – BOOL; YES = render Hercules-style bracket bytes
+/// (0xAD/0xBD and 0x4A/0x5A) as '[' / ']' on display. Outbound keystrokes
+/// still use the canonical CP037 0xBA/0xBB so the host can store them.
 NSString * const kPrefHerculesBrackets = @"herculesBrackets";
 
 // ── 3270-font loader (called once) ───────────────────────────────────────────

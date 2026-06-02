@@ -214,8 +214,8 @@ void EbcdicCodec::setHerculesBrackets(bool enabled) {
 
 uint16_t EbcdicCodec::toUnicode(uint8_t ebcdic) const {
     if (herculesBrackets_) {
-        if (ebcdic == 0xAD) return 0x005B; // '['
-        if (ebcdic == 0xBD) return 0x005D; // ']'
+        if (ebcdic == 0xAD || ebcdic == 0x4A) return 0x005B; // '['
+        if (ebcdic == 0xBD || ebcdic == 0x5A) return 0x005D; // ']'
     }
     return toUnicodeTable_[ebcdic];
 }
@@ -223,8 +223,8 @@ uint16_t EbcdicCodec::toUnicode(uint8_t ebcdic) const {
 uint8_t EbcdicCodec::fromAscii(uint8_t ascii) const {
     if (ascii >= 128) return 0x3F; // '?' in EBCDIC
     if (herculesBrackets_) {
-        if (ascii == '[') return 0xAD;
-        if (ascii == ']') return 0xBD;
+        if (ascii == '[') return 0xAD; // CP1047 native '['
+        if (ascii == ']') return 0xBD; // CP1047 native ']'
     }
     return fromAsciiTable_[ascii];
 }

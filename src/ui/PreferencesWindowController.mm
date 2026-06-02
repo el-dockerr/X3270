@@ -84,7 +84,7 @@
     sep2.boxType = NSBoxSeparator;
     [cv addSubview:sep2];
 
-    _herculesBracketsCheckbox = [NSButton checkboxWithTitle:@"Display EBCDIC 0xAD/0xBD as [ ] (Hercules MVS-TK5)"
+    _herculesBracketsCheckbox = [NSButton checkboxWithTitle:@"Display Hercules-style EBCDIC brackets as [ ]"
                                                      target:self
                                                      action:@selector(herculesBracketsChanged:)];
     _herculesBracketsCheckbox.frame = NSMakeRect(margin, 110, 380, 22);
@@ -93,9 +93,13 @@
     [cv addSubview:_herculesBracketsCheckbox];
 
     NSTextField *compatNote = [NSTextField wrappingLabelWithString:
-        @"Some Hercules-hosted MVS systems (e.g. TK5) store the CP1047 bracket bytes "
-         "(0xAD, 0xBD) inside an otherwise CP037 stream, which would otherwise display "
-         "as ¡ and ¨. Enable this to render — and transmit — them as [ and ]."];
+        @"For Hercules-hosted MVS (e.g. TK5) where the host code page is CP1047. "
+         "Renders inbound 0xAD/0xBD (and 0x4A/0x5A) as [ and ], and sends typed "
+         "brackets as 0xAD/0xBD so the host stores them natively.\n\n"
+         "Note: ISPF EDIT may still display brackets as blank in its data row "
+         "because [ and ] fall outside its \u201cdisplayable character set\u201d \u2014 "
+         "this is a host-side filter, not a terminal bug. Use HEX ON or BROWSE "
+         "to confirm the bytes are stored correctly."];
     compatNote.textColor = [NSColor secondaryLabelColor];
     compatNote.font = [NSFont systemFontOfSize:11];
     compatNote.frame = NSMakeRect(margin + 18, 50, 362, 56);
