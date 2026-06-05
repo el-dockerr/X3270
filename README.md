@@ -200,6 +200,20 @@ The terminal window opens. Type your credentials at the logon screen. ISPF and T
 | `⌘/` | Keyboard Shortcuts window |
 | `⌘Q` | Quit DX3270 |
 
+### Inserting Space Within a Line (The Insert Key)
+
+If you are typing in the middle of a line and realize you forgot a word, you cannot just press the Spacebar like in a modern text editor — the Spacebar in ISPF simply types over your existing text and erases it.
+
+To push text to the right *within* a single line:
+
+1. Move your cursor exactly where you want the new whitespace to begin.
+2. Press the **Insert** key on your physical keyboard.
+3. Look at the bottom of your emulator screen (usually the bottom-left corner). You should see a little `^` symbol appear. This indicates you are in Insert Mode.
+4. Now, press the **Spacebar** or type your new text. The characters to the right of your cursor will slide over to make room.
+5. Press **Enter** or the **Reset** key (usually the left `Ctrl` key) to turn Insert Mode off when you are done.
+
+This is a feature that seems to be missed.
+
 ---
 
 ## Building from Source
@@ -276,6 +290,14 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 ---
 
 ## Version History
+
+### v1.7.4 — 2026-06-05
+
+**Insert mode improvements (3270 & 5250)**
+
+- **Fixed: OIA indicator is now `^` instead of `INS`** — The bottom-left status bar now shows the caret symbol `^` when Insert Mode is active, matching the convention described in the documentation and familiar to ISPF users.
+- **Fixed: pressing Enter exits Insert Mode immediately** — Both the 3270 (`KeyboardState::handleEnter`) and 5250 (`KeyboardState5250::handleEnter`) engines now clear `insertMode_` before sending the AID record, so the `^` indicator disappears as soon as Enter is pressed rather than waiting for the host to unlock the keyboard.
+- **Fixed: field-full OErr in Insert Mode (3270)** — `KeyboardState::insertCharAtCursor` now checks whether the last cell of the field is non-null before shifting characters right. If the field is full, the keyboard locks with `OErr` (and the system beeps) instead of silently dropping the displaced character. This matches real 3270 terminal behaviour. The 5250 engine already had an equivalent guard via `fa.fieldLen`.
 
 ### v1.7.3 — 2026-06-02
 

@@ -70,16 +70,21 @@ bool KeyboardState::insertCharAtCursor(uint8_t ebcdic) {
     if (cell.isFA) return false; // cursor is on FA position — skip
 
     if (insertMode_) {
-        // Shift cells right within the field until end of field or null cell
-        // Find end of field (next FA or wraps)
+        // Find end of field (position of next FA, exclusive)
         int fieldEnd = (cur + 1) % screen_.size();
         for (int i = 0; i < screen_.size(); ++i) {
             if (screen_.at(fieldEnd).isFA) break;
             fieldEnd = (fieldEnd + 1) % screen_.size();
         }
-        // fieldEnd is now the position of the next FA (exclusive)
-        // shift from end-1 back to cur, dropping the last char
-        int shiftEnd = (fieldEnd - 1 + screen_.size()) % screen_.size();
+        // If the last character in the field is non-null the field is full —
+        // lock with OErr (same behaviour as a real 3270 in insert mode).
+        int lastCell = (fieldEnd - 1 + screen_.size()) % screen_.size();
+        if (lastCell != cur && screen_.at(lastCell).ch != 0x00) {
+            lock(LockReason::OErr);
+            return false;
+        }
+        // Shift cells right from lastCell back to cur
+        int shiftEnd = lastCell;
         while (shiftEnd != cur) {
             int prev = (shiftEnd - 1 + screen_.size()) % screen_.size();
             screen_.at(shiftEnd).ch = screen_.at(prev).ch;
@@ -144,6 +149,7 @@ bool KeyboardState::handleTab(bool backward) {
 
 bool KeyboardState::handleEnter() {
     if (isLocked()) return false;
+    insertMode_ = false;
     sendAID(AID_ENTER, true);
     return true;
 }

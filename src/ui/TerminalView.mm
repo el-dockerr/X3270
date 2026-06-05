@@ -604,7 +604,7 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
         case x3270::KeyboardState::LockReason::System:      statusStr = @"X SYS"; break;
         case x3270::KeyboardState::LockReason::OErr:        statusStr = @"X OERR"; break;
         }
-        if (_kbd->isInsertMode()) statusStr = [statusStr stringByAppendingString:@" INS"];
+        if (_kbd->isInsertMode()) statusStr = [statusStr stringByAppendingString:@" ^"];
     } else if (_kbd5250) {
         switch (_kbd5250->lockReason()) {
         case x3270::KeyboardState5250::LockReason::None:        statusStr = @"5250"; break;
@@ -612,7 +612,7 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
         case x3270::KeyboardState5250::LockReason::System:      statusStr = @"5250  X SYS"; break;
         case x3270::KeyboardState5250::LockReason::OErr:        statusStr = @"5250  X OERR"; break;
         }
-        if (_kbd5250->isInsertMode()) statusStr = [statusStr stringByAppendingString:@" INS"];
+        if (_kbd5250->isInsertMode()) statusStr = [statusStr stringByAppendingString:@" ^"];
     }
 
     // Cursor position (1-based)
@@ -632,7 +632,7 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     static dispatch_once_t vOnce;
     dispatch_once(&vOnce, ^{
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.7.3";
+        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.7.4";
         NSString *b = info[@"CFBundleVersion"] ?: @"1";
         versionStr = [NSString stringWithFormat:@"DX3270 v%@ build %@  \u2014  \u00a9 2026 Swen Skalski", v, b];
     });

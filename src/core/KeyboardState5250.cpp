@@ -205,6 +205,7 @@ bool KeyboardState5250::handleTab(bool backward) {
 
 bool KeyboardState5250::handleEnter() {
     if (isLocked()) return false;
+    insertMode_ = false;
     sendAID(AID5250_ENTER, true);
     return true;
 }
