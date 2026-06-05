@@ -657,12 +657,25 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     if (!_kbd && !_kbd5250) return NO;
 
     NSUInteger modifiers = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
-    // Let Cmd+Fkey pass through so app-level shortcuts (⌘Q, ⌘N …) still work.
-    if (modifiers & NSEventModifierFlagCommand) return [super performKeyEquivalent:event];
 
     unichar key = [event.charactersIgnoringModifiers length] > 0
                   ? [event.charactersIgnoringModifiers characterAtIndex:0] : 0;
     BOOL shiftDown = (modifiers & NSEventModifierFlagShift) != 0;
+
+    // ⌘ + I — toggle insert mode (Mac alternative to the PC Insert key,
+    // since most Mac keyboards — especially MacBooks — have no Insert key).
+    // Intercept before the Cmd-passthrough so it does not fall through to the menu.
+    if ((modifiers & NSEventModifierFlagCommand) &&
+        !(modifiers & (NSEventModifierFlagOption | NSEventModifierFlagControl)) &&
+        (key == 'i' || key == 'I')) {
+        if (_kbd)          _kbd->toggleInsert();
+        else if (_kbd5250) _kbd5250->handleInsert();
+        [self setNeedsDisplay:YES];
+        return YES;
+    }
+
+    // Let Cmd+Fkey pass through so app-level shortcuts (⌘Q, ⌘N …) still work.
+    if (modifiers & NSEventModifierFlagCommand) return [super performKeyEquivalent:event];
 
     if (key >= NSF1FunctionKey && key <= NSF12FunctionKey) {
         int pfNum = (int)(key - NSF1FunctionKey + 1);
@@ -724,7 +737,10 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
         else if (key == NSBackspaceCharacter || key == NSDeleteCharacter) {
             handled = _kbd5250->handleBackspace();
         }
-        else if (key == NSInsertFunctionKey) {
+        else if (key == NSInsertFunctionKey || key == NSHelpFunctionKey) {
+            // Insert key (external PC keyboards) or Help key (Apple full-size
+            // keyboards — sits in the same physical position as PC Insert).
+            // MacBooks have neither; use ⌘+I instead (handled in performKeyEquivalent:).
             handled = _kbd5250->handleInsert();
         }
         else if (key == NSUpArrowFunctionKey)    { handled = _kbd5250->handleArrow(-1, 0); }
@@ -794,8 +810,8 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     else if (key == NSDownArrowFunctionKey)  { handled = _kbd->handleCursorDown(); }
     else if (key == NSLeftArrowFunctionKey)  { handled = _kbd->handleCursorLeft(); }
     else if (key == NSRightArrowFunctionKey) { handled = _kbd->handleCursorRight(); }
-    // Insert mode
-    else if (key == NSInsertFunctionKey) {
+    // Insert mode — PC Insert key or Apple Help key (MacBooks: use ⌘+I instead)
+    else if (key == NSInsertFunctionKey || key == NSHelpFunctionKey) {
         _kbd->toggleInsert();
         handled = YES;
     }

@@ -183,7 +183,7 @@ The terminal window opens. Type your credentials at the logon screen. ISPF and T
 | `Escape` | Reset (unlock keyboard) |
 | `Option`+`Escape` | Clear screen |
 | `Tab` / `Alt`+`Tab` | Next / previous field |
-| `Insert` | Toggle insert mode |
+| `Insert` / `Help` / `⌘`+`I` | Toggle insert mode (any of the three works on Mac) |
 | `Option`+`Delete` | Erase to End of Field |
 | `Option`+`E` | Erase Input (all unprotected fields) |
 | `↑` `↓` `←` `→` | Cursor movement |
@@ -211,6 +211,8 @@ To push text to the right *within* a single line:
 3. Look at the bottom of your emulator screen (usually the bottom-left corner). You should see a little `^` symbol appear. This indicates you are in Insert Mode.
 4. Now, press the **Spacebar** or type your new text. The characters to the right of your cursor will slide over to make room.
 5. Press **Enter** or the **Reset** key (usually the left `Ctrl` key) to turn Insert Mode off when you are done.
+
+> **macOS note:** Most Mac keyboards have no Insert key. Use **`⌘`+`I`** instead (works on every Mac, including MacBooks). On Apple full-size keyboards the **Help** key in the top-left of the navigation cluster also works — it sits in the same position as PC Insert.
 
 This is a feature that seems to be missed.
 
@@ -295,6 +297,7 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 
 **Insert mode improvements (3270 & 5250)**
 
+- **New: Mac-friendly Insert key alternatives** — most Mac keyboards (especially MacBooks) have no Insert key. The Insert-mode toggle is now bound to **three** keys: the PC `Insert` key (external keyboards), the Apple `Help` key (full-size Apple keyboards — it occupies the same physical position as PC Insert), and **`⌘`+`I`** which works on every Mac including MacBooks. `⌘`+`I` is intercepted in `TerminalView performKeyEquivalent:` before the standard Cmd-passthrough so it does not fall through to the menu.
 - **Fixed: OIA indicator is now `^` instead of `INS`** — The bottom-left status bar now shows the caret symbol `^` when Insert Mode is active, matching the convention described in the documentation and familiar to ISPF users.
 - **Fixed: pressing Enter exits Insert Mode immediately** — Both the 3270 (`KeyboardState::handleEnter`) and 5250 (`KeyboardState5250::handleEnter`) engines now clear `insertMode_` before sending the AID record, so the `^` indicator disappears as soon as Enter is pressed rather than waiting for the host to unlock the keyboard.
 - **Fixed: field-full OErr in Insert Mode (3270)** — `KeyboardState::insertCharAtCursor` now checks whether the last cell of the field is non-null before shifting characters right. If the field is full, the keyboard locks with `OErr` (and the system beeps) instead of silently dropping the displaced character. This matches real 3270 terminal behaviour. The 5250 engine already had an equivalent guard via `fa.fieldLen`.

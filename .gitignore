@@ -36,3 +36,4 @@ Makefile
 *~
 .fetch-client/
 compare/
+output.log

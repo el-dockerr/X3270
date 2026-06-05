@@ -93,7 +93,7 @@
     ROW(@"Tab",                @"Move cursor to next input field");
     ROW(@"Alt + Tab",          @"Move cursor to previous input field");
     ROW(@"↑  ↓  ←  →",        @"Move cursor within the current field or screen");
-    ROW(@"Insert",             @"Toggle insert mode (characters shift right)");
+    ROW(@"Insert / Help / ⌘ I", @"Toggle insert mode (characters shift right)");
     ROW(@"Option + Delete",    @"Erase to End of Field — clears from cursor to end");
 
     SECTION(@"Application");
