@@ -60,25 +60,7 @@ static NSColor *colorFor3270Code(uint8_t code) {
 // IBM 5250 display attribute decoding (per IBM 5250 Functions Reference,
 // SA21-9247, §15 "Display Attributes").  Each attribute byte 0x20-0x3F
 // encodes a base colour plus modifier flags (reverse, underline, blink,
-// non-display, column-separator).  The full 32-entry table:
-//
-//   0x20 Green                 0x30 Turquoise/CS
-//   0x21 Green RI              0x31 Turquoise/CS RI
-//   0x22 White                 0x32 Yellow/CS
-//   0x23 White RI              0x33 Yellow/CS RI
-//   0x24 Green UL              0x34 Turquoise UL
-//   0x25 Green UL RI           0x35 Turquoise UL RI
-//   0x26 White UL              0x36 Yellow UL
-//   0x27 Non-display           0x37 Non-display
-//   0x28 Red                   0x38 Pink
-//   0x29 Red RI                0x39 Pink RI
-//   0x2A Red UL                0x3A Blue
-//   0x2B Red UL RI             0x3B Blue RI
-//   0x2C Red RI BL             0x3C Pink UL
-//   0x2D Red BL                0x3D Pink UL RI
-//   0x2E Red UL BL             0x3E Blue UL
-//   0x2F Non-display           0x3F Non-display
-
+// non-display, column-separator).
 typedef NS_OPTIONS(uint8_t, X5250Modifier) {
     X5250ModNone      = 0,
     X5250ModReverse   = 1 << 0,
@@ -154,10 +136,10 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
 }
 
 @implementation TerminalView {
-    x3270::ScreenBuffer*      _screen;
-    x3270::KeyboardState*     _kbd;     // TN3270 keyboard (nil in 5250 mode)
+    x3270::ScreenBuffer* _screen;
+    x3270::KeyboardState* _kbd;     // TN3270 keyboard (nil in 5250 mode)
     x3270::KeyboardState5250* _kbd5250; // TN5250 keyboard (nil in 3270 mode)
-    x3270::GraphicsBuffer*    _graphics;   // GOCA drawing command list (3270 only)
+    x3270::GraphicsBuffer* _graphics;   // GOCA drawing command list (3270 only)
     x3270::EbcdicCodec        _codec;
 
     NSTimer* _cursorTimer;
@@ -168,6 +150,7 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
     CGFloat  _charW;   // character cell width
     CGFloat  _charH;   // character cell height (ascent + descent + leading)
     CGFloat  _baseline; // distance from cell bottom to text baseline
+    
     int      _selStart; // Linear offset of selection start (-1 if none)
     int      _selEnd;   // Linear offset of selection end
 }
@@ -244,7 +227,6 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
 - (void)dealloc {
     [_cursorTimer invalidate];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    // ARC handles object release
 }
 
 - (void)recalcCellSize {
@@ -334,37 +316,33 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
             if (cell.isNonDisplay()) continue;
 
             // ── Foreground colour ─────────────────────────────────────────────
-            // Priority: per-cell SA extended colour > FA-attribute default colour
             NSColor *fg;
             BOOL    is5250Reverse   = NO;
             BOOL    is5250Underline = NO;
+            
             if (_kbd5250 != nil) {
-                // 5250 mode: resolve colour from the raw 5250 display attr stored in
-                // the FA cell's fgColor (set by SF order parsing in DataStream5250Parser
-                // and by inline attribute bytes in the data stream).
+                // 5250 mode
                 int faIdx = _screen->findFieldStart(pos);
                 uint8_t dispAttr = (faIdx >= 0) ? _screen->at(faIdx).fgColor : 0x20;
                 if (dispAttr < 0x20 || dispAttr > 0x3F) dispAttr = 0x20;
                 X5250Color base5250;
                 uint8_t    mod5250;
                 decode5250Attr(dispAttr, &base5250, &mod5250);
-                // Non-display fields (password masking)
                 if (mod5250 & X5250ModNonDisp) continue;
                 fg = colorFor5250Attr(dispAttr);
                 is5250Reverse   = (mod5250 & X5250ModReverse)   != 0;
                 is5250Underline = (mod5250 & X5250ModUnderline) != 0;
             } else if (cell.fgColor != 0x00) {
+                // 3270 Extended Color
                 fg = colorFor3270Code(cell.fgColor) ?: _foregroundColor;
             } else {
-                // DEFCOLOR_MAP: index 0-3 from protected (bit5) + intensified (bit3)
-                // 0=unprotected-normal, 1=unprotected-intensified,
-                // 2=protected-normal,   3=protected-intensified
+                // 3270 Base Color
                 int colorIdx = ((cell.attr & 0x20) >> 4) | ((cell.attr & 0x08) >> 3);
                 switch (colorIdx) {
-                case 1:  fg = _intensifiedColor; break;  // red
-                case 2:  fg = [NSColor colorWithRed:0.22 green:0.52 blue:1.00 alpha:1.0]; break; // blue
-                case 3:  fg = [NSColor colorWithRed:0.85 green:0.85 blue:0.85 alpha:1.0]; break; // white
-                default: fg = _foregroundColor; break;   // green
+                case 1:  fg = _intensifiedColor; break;
+                case 2:  fg = [NSColor colorWithRed:0.22 green:0.52 blue:1.00 alpha:1.0]; break;
+                case 3:  fg = [NSColor colorWithRed:0.85 green:0.85 blue:0.85 alpha:1.0]; break;
+                default: fg = _foregroundColor; break;
                 }
             }
 
@@ -373,35 +351,31 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                 ? (colorFor3270Code(cell.bgColor) ?: _backgroundColor)
                 : _backgroundColor;
 
-            // ── Mouse Selection ───────────────────────────────────────────────
-            if (_selStart != -1 && _selEnd != -1) {
-                int minSel = MIN(_selStart, _selEnd);
-                int maxSel = MAX(_selStart, _selEnd);
-                if (pos >= minSel && pos <= maxSel) {
-                    // Invert foreground and background for selected cells
-                    NSColor *tmp = fg;
-                    fg = (bg == _backgroundColor) ? [NSColor selectedTextBackgroundColor] : bg;
-                    bg = (tmp == _foregroundColor) ? [NSColor selectedTextColor] : tmp;
-                }
-            }
-
             // ── Reverse-video highlight (0xF2) ────────────────────────────────
             if (cell.highlight == 0xF2 || is5250Reverse) {
                 NSColor *tmp = fg; fg = bg; bg = tmp;
             }
 
-            // ── Mouse Selection Overrides ─────────────────────────────────────
+            // ── Mouse Selection Overrides (Rectangular Selection) ─────────────
             if (_selStart != -1 && _selEnd != -1) {
-                int minSel = MIN(_selStart, _selEnd);
-                int maxSel = MAX(_selStart, _selEnd);
-                if (pos >= minSel && pos <= maxSel) {
-                    // Force native macOS selection colors, overriding terminal styles
+                int r1 = _selStart / _cols;
+                int c1 = _selStart % _cols;
+                int r2 = _selEnd / _cols;
+                int c2 = _selEnd % _cols;
+                
+                int minRow = MIN(r1, r2);
+                int maxRow = MAX(r1, r2);
+                int minCol = MIN(c1, c2);
+                int maxCol = MAX(c1, c2);
+                
+                // If cell is inside the selection rectangle, apply native macOS selection colors
+                if (row >= minRow && row <= maxRow && col >= minCol && col <= maxCol) {
                     bg = [NSColor selectedTextBackgroundColor];
                     fg = [NSColor selectedTextColor];
                 }
             }
 
-            // Cell rect (Y=0 is bottom in Cocoa)
+            // Calculate pixel coordinates (Y=0 is bottom in Cocoa)
             CGFloat cx = col * _charW;
             CGFloat cy = self.bounds.size.height - (row + 1) * _charH;
 
@@ -411,7 +385,7 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                 NSRectFill(NSMakeRect(cx, cy, _charW, _charH));
             }
 
-            // Draw character
+            // ── Draw Character ────────────────────────────────────────────────
             uint16_t unicode = _codec.toUnicode(cell.ch);
             if (unicode >= 0x20) {
                 NSString *ch = [NSString stringWithFormat:@"%C", (unichar)unicode];
@@ -427,14 +401,14 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                 [fg setStroke];
                 NSBezierPath *line = [NSBezierPath bezierPath];
                 [line setLineWidth:1.0];
-                [line moveToPoint:NSMakePoint(cx,          cy + 1.0)];
+                [line moveToPoint:NSMakePoint(cx, cy + 1.0)];
                 [line lineToPoint:NSMakePoint(cx + _charW, cy + 1.0)];
                 [line stroke];
             }
         }
     }
 
-    // Draw block cursor (always visible during blink-on phase, regardless of lock state)
+    // ── Draw block cursor ─────────────────────────────────────────────────────
     if (_cursorVisible && _screen) {
         int curPos = _screen->cursorPos();
         int curRow = curPos / _cols;
@@ -460,10 +434,10 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
         }
     }
 
-    // Draw OIA (status bar)
+    // ── Draw OIA (status bar) ─────────────────────────────────────────────────
     [self drawOIA];
 
-    // Draw GOCA graphics overlay (on top of text, below OIA)
+    // ── Draw GOCA graphics overlay ────────────────────────────────────────────
     if (_graphics && !_graphics->commands().empty()) {
         CGContextRef cgctx = [[NSGraphicsContext currentContext] CGContext];
         [self drawGraphicsOverlay:cgctx];
@@ -472,22 +446,6 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
 }
 
 // ── GOCA Graphics Overlay ─────────────────────────────────────────────────────
-// Coordinate mapping:
-//   GOCA device units are defined by the AW/AH values in the Usable Area Query
-//   Reply: 1 x-unit = 1/9 of a character cell width, 1 y-unit = 1/12 of height.
-//   The GOCA origin (0,0) is the top-left of the character area (not the OIA).
-//   Cocoa Y-origin is bottom-left, so we flip Y relative to the text area height.
-//
-// Pixel from GOCA unit:
-//   px = goca_x * (_charW / kGocaCellW)
-//   py = (_rows * _charH) - goca_y * (_charH / kGocaCellH)   (Cocoa coords)
-//
-// The OIA rows are below the text area in Cocoa Y, so no offset is needed here
-// because TerminalView reserves (kOIARows * _charH) at the very bottom and text
-// rows start at y = kOIARows * _charH.  The overall view height is:
-//   (_rows + kOIARows) * _charH
-// Text area top (in Cocoa) = view height,  text area bottom = kOIARows * _charH.
-
 static constexpr CGFloat kGocaCellW = 9.0;  // must match AW in buildQueryReply()
 static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply()
 
@@ -497,14 +455,12 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     const CGFloat scaleX    = _charW / kGocaCellW;
     const CGFloat scaleY    = _charH / kGocaCellH;
 
-    // Helper lambda (C++ block) — GOCA (x,y) → Cocoa point.
     auto toPoint = [&](int16_t gx, int16_t gy) -> CGPoint {
         CGFloat px = gx * scaleX;
         CGFloat py = textAreaY + textAreaH - gy * scaleY; // flip Y
         return CGPointMake(px, py);
     };
 
-    // Current CG stroke/fill colour (defaults to green = 0xF4).
     NSColor *currentNSColor = _foregroundColor;
     auto applyColor = [&](uint8_t code) {
         NSColor *c = (code != 0x00) ? colorFor3270Code(code) : _foregroundColor;
@@ -519,7 +475,6 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     CGContextSetLineWidth(ctx, 1.0);
     applyColor(0x00); // set default colour
 
-    // Accumulated line path start point (for LineTo sequences).
     CGPoint lineStart = CGPointZero;
     bool    inLinePath = false;
 
@@ -530,19 +485,15 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
             applyColor(c.index);
             inLinePath = false;
         }
-
         else if (std::holds_alternative<x3270::GocaSetMix>(cmd)) {
             auto& m = std::get<x3270::GocaSetMix>(cmd);
-            // 0x04 = XOR (exclusive-or); anything else = normal overpaint.
             CGContextSetBlendMode(ctx, (m.mode == 0x04) ? kCGBlendModeXOR : kCGBlendModeNormal);
         }
-
         else if (std::holds_alternative<x3270::GocaMoveTo>(cmd)) {
             auto& mv = std::get<x3270::GocaMoveTo>(cmd);
             lineStart   = toPoint(mv.x, mv.y);
             inLinePath  = false;
         }
-
         else if (std::holds_alternative<x3270::GocaLineTo>(cmd)) {
             auto& ln = std::get<x3270::GocaLineTo>(cmd);
             if (ln.pts.empty()) break;
@@ -566,7 +517,6 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
             lineStart  = last;
             inLinePath = false;
         }
-
         else if (std::holds_alternative<x3270::GocaArc>(cmd)) {
             auto& arc = std::get<x3270::GocaArc>(cmd);
             CGPoint center = toPoint(arc.cx, arc.cy);
@@ -577,7 +527,6 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
             CGContextStrokePath(ctx);
             inLinePath = false;
         }
-
         else if (std::holds_alternative<x3270::GocaFilledRect>(cmd)) {
             auto& fr = std::get<x3270::GocaFilledRect>(cmd);
             CGPoint p1 = toPoint(fr.x1, fr.y1);
@@ -589,7 +538,6 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
             CGContextFillRect(ctx, CGRectMake(rx, ry, rw, rh));
             inLinePath = false;
         }
-
         else if (std::holds_alternative<x3270::GocaCharString>(cmd)) {
             auto& cs = std::get<x3270::GocaCharString>(cmd);
             CGPoint pt = toPoint(cs.x, cs.y);
@@ -605,11 +553,9 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
             }
             inLinePath = false;
         }
-
-        // GocaBeginSegment / GocaEndSegment — no rendering action, metadata only.
     }
 
-    (void)inLinePath; // suppress unused-variable warning
+    (void)inLinePath;
 }
 
 - (void)drawOIA {
@@ -793,7 +739,7 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
         return;
     }
 
-    // ── 3270 keyboard (existing logic) ────────────────────────────────────────
+    // ── 3270 keyboard ─────────────────────────────────────────────────────────
     // PF keys: F1-F12 (PF1-12), Shift+F1-F12 (PF13-24)
     if (key >= NSF1FunctionKey && key <= NSF12FunctionKey) {
         int pfNum = (int)(key - NSF1FunctionKey + 1);
@@ -952,33 +898,45 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
         return;
     }
     
-    int minSel = MIN(_selStart, _selEnd);
-    int maxSel = MAX(_selStart, _selEnd);
+    int r1 = _selStart / _cols;
+    int c1 = _selStart % _cols;
+    int r2 = _selEnd / _cols;
+    int c2 = _selEnd % _cols;
+    
+    int minRow = MIN(r1, r2);
+    int maxRow = MAX(r1, r2);
+    int minCol = MIN(c1, c2);
+    int maxCol = MAX(c1, c2);
     
     NSMutableString *copiedText = [NSMutableString string];
     
-    for (int pos = minSel; pos <= maxSel; ++pos) {
-        const x3270::Cell& cell = _screen->at(pos);
+    for (int r = minRow; r <= maxRow; ++r) {
+        NSMutableString *rowText = [NSMutableString string];
         
-        // Render field attributes and hidden (password) fields as spaces
-        if (cell.isFA || cell.isNonDisplay() || cell.ch == 0x00) {
-            [copiedText appendString:@" "];
-        } else {
-            uint16_t uc = _codec.toUnicode(cell.ch);
-            if (uc >= 0x20) {
-                [copiedText appendFormat:@"%C", (unichar)uc];
+        for (int c = minCol; c <= maxCol; ++c) {
+            int pos = r * _cols + c;
+            const x3270::Cell& cell = _screen->at(pos);
+            
+            if (cell.isFA || cell.isNonDisplay() || cell.ch == 0x00) {
+                [rowText appendString:@" "];
             } else {
-                [copiedText appendString:@" "];
+                uint16_t uc = _codec.toUnicode(cell.ch);
+                if (uc >= 0x20) {
+                    [rowText appendFormat:@"%C", (unichar)uc];
+                } else {
+                    [rowText appendString:@" "];
+                }
             }
         }
         
-        // Add a newline at the end of each screen row (unless it's the very end of selection)
-        if ((pos % _cols) == (_cols - 1) && pos != maxSel) {
-            // Trim trailing spaces before adding newline
-            NSRange range = [copiedText rangeOfString:@" +$" options:NSRegularExpressionSearch];
-            if (range.location != NSNotFound) {
-                [copiedText deleteCharactersInRange:range];
-            }
+        NSRange range = [rowText rangeOfString:@" +$" options:NSRegularExpressionSearch];
+        if (range.location != NSNotFound) {
+            [rowText deleteCharactersInRange:range];
+        }
+        
+        [copiedText appendString:rowText];
+        
+        if (r < maxRow) {
             [copiedText appendString:@"\n"];
         }
     }
