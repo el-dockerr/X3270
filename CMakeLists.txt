@@ -12,6 +12,11 @@ set(CMAKE_OBJCXX_STANDARD 17)
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
+# Link OpenSSL statically so the produced .app is fully self-contained. A
+# dynamically-linked build hard-codes an absolute Homebrew path
+# (/opt/homebrew/opt/openssl@3 or /usr/local/opt/openssl@3) that does NOT exist
+# on an end user's Mac, so the app would fail to launch after download.
+set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
 
 # ── Sources ───────────────────────────────────────────────────────────────────

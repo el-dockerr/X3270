@@ -110,6 +110,24 @@ echo "==> Staging DMG contents"
 cp -R "${APP_PATH}" "${STAGING_DIR}/${APP_NAME}.app"
 ln -s /Applications "${STAGING_DIR}/Applications"
 
+# ── 3b. Code-sign the *whole* app bundle ──────────────────────────────────────
+# The linker only ad-hoc-signs the raw executable; once CMake adds the icon,
+# fonts and Info.plist the seal is invalid, so a downloaded (quarantined) copy is
+# rejected by Gatekeeper as "damaged". Re-sign the assembled bundle. (x86_64
+# bundles sign fine from an Apple Silicon host.) Set CODESIGN_IDENTITY to a
+# "Developer ID Application: …" identity for distribution; ad-hoc (-) otherwise.
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+SIGNED_APP="${STAGING_DIR}/${APP_NAME}.app"
+echo ""
+echo "==> Code-signing app bundle (identity: ${CODESIGN_IDENTITY})"
+if [ "${CODESIGN_IDENTITY}" = "-" ]; then
+    codesign --force --deep --sign - "${SIGNED_APP}"
+else
+    codesign --force --deep --options runtime --timestamp \
+        --sign "${CODESIGN_IDENTITY}" "${SIGNED_APP}"
+fi
+codesign --verify --deep --strict --verbose=2 "${SIGNED_APP}"
+
 # ── 4. Create the DMG ─────────────────────────────────────────────────────────
 mkdir -p "${DIST_DIR}"
 
@@ -131,6 +149,7 @@ hdiutil convert \
     "${TEMP_DMG}" \
     -format UDZO \
     -imagekey zlib-level=9 \
+    -ov \
     -o "${FINAL_DMG}" \
     > /dev/null
 

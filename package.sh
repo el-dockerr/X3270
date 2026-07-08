@@ -45,6 +45,28 @@ cp -R "${APP_PATH}" "${STAGING_DIR}/${APP_NAME}.app"
 # Symlink to /Applications for drag-install UX
 ln -s /Applications "${STAGING_DIR}/Applications"
 
+# ── 2b. Code-sign the *whole* app bundle ──────────────────────────────────────
+# The linker only ad-hoc-signs the raw executable. Once CMake adds the icon,
+# fonts and Info.plist, that seal no longer matches the bundle, so a downloaded
+# (quarantined) copy is rejected by Gatekeeper as "damaged and can't be opened".
+# Re-signing the assembled bundle produces a valid _CodeSignature seal.
+#
+# Set CODESIGN_IDENTITY to a "Developer ID Application: …" identity to sign for
+# distribution (recommended — pair with notarization for a warning-free launch).
+# Otherwise we fall back to ad-hoc (-), which removes the "damaged" error; users
+# then open it once via right-click → Open (or the xattr command in the README).
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+SIGNED_APP="${STAGING_DIR}/${APP_NAME}.app"
+echo ""
+echo "==> Code-signing app bundle (identity: ${CODESIGN_IDENTITY})"
+if [ "${CODESIGN_IDENTITY}" = "-" ]; then
+    codesign --force --deep --sign - "${SIGNED_APP}"
+else
+    codesign --force --deep --options runtime --timestamp \
+        --sign "${CODESIGN_IDENTITY}" "${SIGNED_APP}"
+fi
+codesign --verify --deep --strict --verbose=2 "${SIGNED_APP}"
+
 # ── 3. Create the DMG ─────────────────────────────────────────────────────────
 mkdir -p "${DIST_DIR}"
 
@@ -67,6 +89,7 @@ hdiutil convert \
     "${TEMP_DMG}" \
     -format UDZO \
     -imagekey zlib-level=9 \
+    -ov \
     -o "${FINAL_DMG}" \
     > /dev/null
 
