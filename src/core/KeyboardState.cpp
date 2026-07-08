@@ -125,23 +125,6 @@ void KeyboardState::sendPAKey(uint8_t aidCode) {
 }
 
 // ── Key handlers ──────────────────────────────────────────────────────────────
-/*bool KeyboardState::handleChar(uint8_t asciiChar) {
-    if (isLocked()) {
-        // Only escalate to OErr when we're in a normal System lock;
-        // Connecting and OErr states must not be overwritten.
-        if (lockReason_ == LockReason::System)
-            lock(LockReason::OErr);
-        return false;
-    }
-    if (!isCurrentFieldEditable()) {
-        lock(LockReason::OErr);
-        return false;
-    }
-    uint8_t ebcdic = codec_.fromAscii(asciiChar);
-    return insertCharAtCursor(ebcdic);
-}*/
-
-// ── Key handlers ──────────────────────────────────────────────────────────────
 bool KeyboardState::handleChar(uint8_t asciiChar) {
     uint8_t ebcdic = codec_.fromAscii(asciiChar);
     return handleEbcdicChar(ebcdic);

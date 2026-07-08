@@ -184,21 +184,6 @@ void KeyboardState5250::sendAID(uint8_t aidCode, bool includeModifiedFields) {
 
 // ── Key handlers ──────────────────────────────────────────────────────────────
 
-/*bool KeyboardState5250::handleChar(uint8_t asciiChar) {
-    if (isLocked()) {
-        if (lockReason_ == LockReason::System) lock(LockReason::OErr);
-        return false;
-    }
-    if (!isCurrentFieldEditable()) {
-        lock(LockReason::OErr);
-        return false;
-    }
-    uint8_t ebcdic = codec_.fromAscii(asciiChar);
-    return insertCharAtCursor(ebcdic);
-}*/
-
-// ── Key handlers ──────────────────────────────────────────────────────────────
-
 bool KeyboardState5250::handleChar(uint8_t asciiChar) {
     uint8_t ebcdic = codec_.fromAscii(asciiChar);
     return handleEbcdicChar(ebcdic);
