@@ -81,6 +81,7 @@ public:
 
     // ── Key handlers ──────────────────────────────────────────────────────────
     bool handleChar(uint8_t asciiChar);
+    bool handleEbcdicChar(uint8_t ebcdic); // raw EBCDIC input (used for pasting)
     bool handleTab(bool backward = false);
     bool handleEnter();
     bool handleClear();

@@ -168,6 +168,8 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
     CGFloat  _charW;   // character cell width
     CGFloat  _charH;   // character cell height (ascent + descent + leading)
     CGFloat  _baseline; // distance from cell bottom to text baseline
+    int      _selStart; // Linear offset of selection start (-1 if none)
+    int      _selEnd;   // Linear offset of selection end
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -177,6 +179,9 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
         _cursorVisible = YES;
         _rows = 24;  // default; updated when screen buffer is attached
         _cols = 80;
+
+        _selStart = -1;
+        _selEnd = -1;
 
         // Register the bundled 3270 font variants with Core Text (once per process)
         register3270FontsIfNeeded();
@@ -368,9 +373,32 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                 ? (colorFor3270Code(cell.bgColor) ?: _backgroundColor)
                 : _backgroundColor;
 
+            // ── Mouse Selection ───────────────────────────────────────────────
+            if (_selStart != -1 && _selEnd != -1) {
+                int minSel = MIN(_selStart, _selEnd);
+                int maxSel = MAX(_selStart, _selEnd);
+                if (pos >= minSel && pos <= maxSel) {
+                    // Invert foreground and background for selected cells
+                    NSColor *tmp = fg;
+                    fg = (bg == _backgroundColor) ? [NSColor selectedTextBackgroundColor] : bg;
+                    bg = (tmp == _foregroundColor) ? [NSColor selectedTextColor] : tmp;
+                }
+            }
+
             // ── Reverse-video highlight (0xF2) ────────────────────────────────
             if (cell.highlight == 0xF2 || is5250Reverse) {
                 NSColor *tmp = fg; fg = bg; bg = tmp;
+            }
+
+            // ── Mouse Selection Overrides ─────────────────────────────────────
+            if (_selStart != -1 && _selEnd != -1) {
+                int minSel = MIN(_selStart, _selEnd);
+                int maxSel = MAX(_selStart, _selEnd);
+                if (pos >= minSel && pos <= maxSel) {
+                    // Force native macOS selection colors, overriding terminal styles
+                    bg = [NSColor selectedTextBackgroundColor];
+                    fg = [NSColor selectedTextColor];
+                }
             }
 
             // Cell rect (Y=0 is bottom in Cocoa)
@@ -632,7 +660,7 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
     static dispatch_once_t vOnce;
     dispatch_once(&vOnce, ^{
         NSDictionary *info = [[NSBundle mainBundle] infoDictionary];
-        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.7.4";
+        NSString *v = info[@"CFBundleShortVersionString"] ?: @"1.7.5";
         NSString *b = info[@"CFBundleVersion"] ?: @"1";
         versionStr = [NSString stringWithFormat:@"DX3270 v%@ build %@  \u2014  \u00a9 2026 Swen Skalski", v, b];
     });
@@ -842,6 +870,157 @@ static constexpr CGFloat kGocaCellH = 12.0; // must match AH in buildQueryReply(
             NSBeep();
         }
     }
+}
+
+// ── Mouse handling ────────────────────────────────────────────────────────────
+
+- (int)offsetForPoint:(NSPoint)pt {
+    if (!_screen) return -1;
+    
+    int col = (int)(pt.x / _charW);
+    // Cocoa Y is bottom-up, but row 0 is at the top of the terminal grid.
+    int row = (int)((self.bounds.size.height - pt.y) / _charH);
+    
+    // Disallow clicks outside the text area (e.g., in the OIA)
+    if (col < 0 || col >= _cols || row < 0 || row >= _rows) {
+        return -1;
+    }
+    
+    return (row * _cols) + col;
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    if (!_screen) return;
+    
+    NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
+    int offset = [self offsetForPoint:pt];
+    
+    if (offset >= 0) {
+        _screen->setCursor(offset);
+        _selStart = offset;
+        _selEnd = offset;
+        [self setNeedsDisplay:YES];
+    } else {
+        // Clicked outside bounds (e.g., OIA), clear selection
+        _selStart = -1;
+        _selEnd = -1;
+        [self setNeedsDisplay:YES];
+    }
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    if (!_screen || _selStart == -1) return;
+    
+    NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
+    int offset = [self offsetForPoint:pt];
+    
+    if (offset >= 0 && offset != _selEnd) {
+        _selEnd = offset;
+        [self setNeedsDisplay:YES];
+    }
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    // If it was just a click with no drag, clear the selection block
+    if (_selStart == _selEnd) {
+        _selStart = -1;
+        _selEnd = -1;
+        [self setNeedsDisplay:YES];
+    }
+}
+
+// ── Clipboard (Copy / Paste) ──────────────────────────────────────────────────
+
+- (uint8_t)ebcdicForUnichar:(unichar)c {
+    // 1. Reverse-lookup using the active Code Page
+    for (int i = 0; i < 256; i++) {
+        if (_codec.toUnicode((uint8_t)i) == c) {
+            return (uint8_t)i;
+        }
+    }
+    // 2. ASCII fallback
+    if (c < 128) {
+        return _codec.fromAscii((uint8_t)c);
+    }
+    // 3. Unmapped character -> EBCDIC '?'
+    return 0x3F;
+}
+
+- (void)copy:(id)sender {
+    if (!_screen || _selStart == -1 || _selEnd == -1) {
+        NSBeep();
+        return;
+    }
+    
+    int minSel = MIN(_selStart, _selEnd);
+    int maxSel = MAX(_selStart, _selEnd);
+    
+    NSMutableString *copiedText = [NSMutableString string];
+    
+    for (int pos = minSel; pos <= maxSel; ++pos) {
+        const x3270::Cell& cell = _screen->at(pos);
+        
+        // Render field attributes and hidden (password) fields as spaces
+        if (cell.isFA || cell.isNonDisplay() || cell.ch == 0x00) {
+            [copiedText appendString:@" "];
+        } else {
+            uint16_t uc = _codec.toUnicode(cell.ch);
+            if (uc >= 0x20) {
+                [copiedText appendFormat:@"%C", (unichar)uc];
+            } else {
+                [copiedText appendString:@" "];
+            }
+        }
+        
+        // Add a newline at the end of each screen row (unless it's the very end of selection)
+        if ((pos % _cols) == (_cols - 1) && pos != maxSel) {
+            // Trim trailing spaces before adding newline
+            NSRange range = [copiedText rangeOfString:@" +$" options:NSRegularExpressionSearch];
+            if (range.location != NSNotFound) {
+                [copiedText deleteCharactersInRange:range];
+            }
+            [copiedText appendString:@"\n"];
+        }
+    }
+    
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    [pb setString:copiedText forType:NSPasteboardTypeString];
+}
+
+- (void)paste:(id)sender {
+    if (!_kbd && !_kbd5250) return;
+    
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    NSString *text = [pb stringForType:NSPasteboardTypeString];
+    
+    if (!text || text.length == 0) {
+        NSBeep();
+        return;
+    }
+    
+    for (NSUInteger i = 0; i < text.length; i++) {
+        unichar c = [text characterAtIndex:i];
+        BOOL success = NO;
+        
+        // Newlines move focus to the next unprotected field
+        if (c == '\n' || c == '\r') {
+            if (_kbd) success = _kbd->handleTab(false);
+            else if (_kbd5250) success = _kbd5250->handleTab(false);
+        } else {
+            uint8_t ebcdic = [self ebcdicForUnichar:c];
+            if (_kbd) success = _kbd->handleEbcdicChar(ebcdic);
+            else if (_kbd5250) success = _kbd5250->handleEbcdicChar(ebcdic);
+        }
+        
+        // Stop pasting if we hit a protected field, OErr, or keyboard lock
+        if (!success) {
+            NSBeep();
+            break;
+        }
+    }
+    
+    [self setNeedsDisplay:YES];
 }
 
 @end
