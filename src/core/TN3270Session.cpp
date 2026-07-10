@@ -9,10 +9,9 @@ TN3270Session::~TN3270Session() { disconnect(); }
 
 // ── Public interface ──────────────────────────────────────────────────────────
 bool TN3270Session::connect(const std::string& host, uint16_t port,
-                             bool useTLS, const std::string& caBundle) {
-    state_ = State::Connecting;
+                            bool useTLS, bool verifyCert, const std::string& caBundle) {
     std::string errMsg;
-    if (!transport_.connect(host, port, useTLS, caBundle, errMsg)) {
+    if (!transport_.connect(host, port, useTLS, verifyCert, caBundle, errMsg)) {
         state_ = State::Disconnected;
         if (errorCb_) errorCb_(errMsg);
         return false;

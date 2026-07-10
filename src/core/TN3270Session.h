@@ -85,9 +85,9 @@ public:
     /// Connect and start Telnet negotiation.  Blocks until negotiation is
     /// complete or an error occurs (intended to be called from a background thread).
     bool connect(const std::string& host, uint16_t port,
-                 bool useTLS,
+                 bool useTLS, bool verifyCert,
                  const std::string& caBundle = {}) override;
-
+                 
     void disconnect() override;
     bool isConnected()    const override { return state_ == State::Connected; }
     bool tn3270eActive()  const { return tn3270eMode_; }

@@ -20,12 +20,13 @@ const char* TN5250Session::terminalTypeName() const {
 TN5250Session::TN5250Session()  = default;
 TN5250Session::~TN5250Session() { disconnect(); }
 
+
 bool TN5250Session::connect(const std::string& host, uint16_t port,
-                             bool useTLS, const std::string& caBundle) {
+                            bool useTLS, bool verifyCert, const std::string& caBundle) {
     state_ = State::Connecting;
 
     std::string errMsg;
-    if (!transport_.connect(host, port, useTLS, caBundle, errMsg)) {
+    if (!transport_.connect(host, port, useTLS, verifyCert, caBundle, errMsg)) {
         state_ = State::Disconnected;
         if (errorCb_) errorCb_(errMsg);
         return false;

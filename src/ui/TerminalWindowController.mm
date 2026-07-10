@@ -39,6 +39,7 @@
     NSString  *_host;
     uint16_t   _port;
     BOOL       _useSSL;
+    BOOL       _verifyCert;
     NSString  *_caBundle;
     x3270::CodePage       _codePage;
     x3270::TerminalModel  _model;
@@ -48,6 +49,7 @@
 - (instancetype)initWithHost:(NSString*)host
                         port:(uint16_t)port
                       useSSL:(BOOL)useSSL
+                    verifyCert:(BOOL)verifyCert
                     caBundle:(NSString*)caBundle
                     codePage:(x3270::CodePage)codePage
                        model:(x3270::TerminalModel)model
@@ -70,6 +72,7 @@
         _host     = [host copy];
         _port     = port;
         _useSSL   = useSSL;
+        _verifyCert = verifyCert;
         _caBundle = [caBundle copy];
         _codePage = codePage;
         _model    = model;
@@ -314,15 +317,16 @@
     std::string host      = [_host UTF8String];
     uint16_t    port      = _port;
     bool        useSSL    = _useSSL == YES;
+    bool        verifyCert = _verifyCert == YES;
     std::string caBundle  = _caBundle ? [_caBundle UTF8String] : "";
 
     // Capture self strongly so the controller stays alive while the network
     // thread is running, but hand the final release back to the main thread
     // so dealloc (and the AppKit teardown it triggers) never runs on a
     // background thread.
-    _networkThread = std::thread([self, host, port, useSSL, caBundle]() {
+    _networkThread = std::thread([self, host, port, useSSL, verifyCert, caBundle]() {
         @autoreleasepool {
-            bool ok = _session->connect(host, port, useSSL, caBundle);
+            bool ok = _session->connect(host, port, useSSL, verifyCert, caBundle);
             if (ok) {
                 _session->readLoop(); // blocks until disconnected
             }

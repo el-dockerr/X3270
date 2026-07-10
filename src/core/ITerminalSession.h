@@ -27,8 +27,7 @@ public:
     /// Returns true when the session enters data-exchange mode.
     /// Intended to be called from a background thread.
     virtual bool connect(const std::string& host, uint16_t port,
-                         bool useTLS, const std::string& caBundle = {}) = 0;
-
+                         bool useTLS, bool verifyCert, const std::string& caBundle = {}) = 0;
     virtual void disconnect() = 0;
     virtual bool isConnected() const = 0;
 
