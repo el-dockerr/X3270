@@ -164,6 +164,8 @@ This strips the quarantine flag that triggers Gatekeeper. After running it, DX32
    | Host | `204.90.115.200` |
    | Port | `623` (plain) · `992` (TLS) · `23` (standard Telnet) |
    | SSL/TLS | check for encrypted connections |
+   | Verify Certificate | Uncheck to easily allow self-signed certificates |
+   | without needing a CA Bundle |
    | CA Bundle | path to a PEM file if using a private CA (optional) |
    | Code Page | CP037 (US default) · CP500 · CP1047 |
 3. Click **Connect**
@@ -292,6 +294,17 @@ Then run `./package_intel.sh` or `./package_all.sh` as shown above.
 ---
 
 ## Version History
+
+### v1.7.5 — 2026-07-11
+Selection and Clipboard improvements
+
+- **Rectangular Selection:** Added support for mouse-driven rectangular (block) text selection. You can now cleanly select columns and specific areas of the green screen, matching the expected behaviour of traditional mainframe emulators.
+
+- **Copy/Paste:** Full support for copying block selections (⌘C) and pasting text (⌘V) directly into the terminal input fields.
+
+**Security & Certificates**
+
+- **Certificate Verification Checkbox:** Added a new toggle in the Connect dialog to explicitly enable or disable SSL/TLS certificate verification. This allows quick encrypted connections to hosts using self-signed certificates without needing to manually provide a CA bundle.
 
 ### v1.7.4 — 2026-06-05
 
