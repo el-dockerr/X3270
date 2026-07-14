@@ -7,6 +7,8 @@
     NSComboBox     *_hostCombo;
     NSTextField    *_portField;
     NSButton       *_sslCheckbox;
+    // Below existing variables like _sslCheckbox
+    NSButton       *_verifyCertCheckbox;
     NSTextField    *_caField;
     NSPopUpButton  *_codePagePopup;
     NSPopUpButton  *_modelPopup;
@@ -48,7 +50,7 @@
     __block CGFloat curY = 304;
 
     // ── Header: app name, version and author ──────────────────────────────────
-    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.7.4";
+    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.7.5";
 
     NSTextField *appName = [NSTextField labelWithString:@"DX3270"];
     appName.font = [NSFont boldSystemFontOfSize:16];
@@ -140,6 +142,15 @@
                                         action:@selector(sslToggled:)];
     _sslCheckbox.frame = NSMakeRect(margin + labelW + gap, curY, fieldW, rowH);
     [cv addSubview:_sslCheckbox];
+    curY -= rowH + gap;
+
+    // Insert the new checkbox for certificate verification HERE
+    _verifyCertCheckbox = [NSButton checkboxWithTitle:@"Verify SSL Certificate"
+                                           target:self
+                                           action:nil]; // No immediate action needed
+    _verifyCertCheckbox.frame = NSMakeRect(margin + labelW + gap, curY, fieldW, rowH);
+    _verifyCertCheckbox.state = NSControlStateValueOn; // Enabled by default for security
+    [cv addSubview:_verifyCertCheckbox];
     curY -= rowH + gap;
 
     // CA Bundle (hidden by default)
@@ -235,6 +246,8 @@
 - (void)sslToggled:(id)sender {
     BOOL sslOn = _sslCheckbox.state == NSControlStateValueOn;
     _caField.hidden = !sslOn;
+    _verifyCertCheckbox.enabled = sslOn; // Disable the checkbox if SSL is off
+    
     if (sslOn && [_portField.stringValue isEqualToString:@"23"]) {
         _portField.stringValue = @"992";
     } else if (!sslOn && [_portField.stringValue isEqualToString:@"992"]) {
@@ -299,6 +312,7 @@
     }
 
     BOOL useSSL = _sslCheckbox.state == NSControlStateValueOn;
+    BOOL verifyCert = _verifyCertCheckbox.state == NSControlStateValueOn; // <--- New line
     NSString *caBundle = useSSL ? _caField.stringValue : @"";
 
     // Map code page selection
@@ -339,6 +353,7 @@
         [[TerminalWindowController alloc] initWithHost:host
                                                   port:(uint16_t)port
                                                 useSSL:useSSL
+                                                verifyCert:verifyCert
                                               caBundle:caBundle
                                              codePage:cp
                                                 model:model
@@ -424,6 +439,8 @@ static const NSInteger  kHistoryMax = 20;
         NSInteger model = [last[@"model"] integerValue];
         if (model >= 0 && model < _modelPopup.numberOfItems)
             [_modelPopup selectItemAtIndex:model];
+        _verifyCertCheckbox.state = [last[@"verifyCert"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
+        _verifyCertCheckbox.enabled = [last[@"ssl"] boolValue];
     }
 }
 
@@ -447,6 +464,7 @@ static const NSInteger  kHistoryMax = 20;
         @"codepage": @(_codePagePopup.indexOfSelectedItem),
         @"model":    @(_modelPopup.indexOfSelectedItem),
         @"protocol": @(_protocolPopup.indexOfSelectedItem),
+        @"verifyCert": @(_verifyCertCheckbox.state == NSControlStateValueOn),
     };
 
     // Remove existing entry for same host:port so it moves to top

@@ -11,6 +11,7 @@
 - (instancetype)initWithHost:(NSString*)host
                         port:(uint16_t)port
                       useSSL:(BOOL)useSSL
+                    verifyCert:(BOOL)verifyCert
                     caBundle:(NSString*)caBundle
                     codePage:(x3270::CodePage)codePage
                        model:(x3270::TerminalModel)model

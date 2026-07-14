@@ -79,7 +79,8 @@ public:
     void setModel(TerminalModel m) { model_ = m; }
 
     bool connect(const std::string& host, uint16_t port,
-                 bool useTLS, const std::string& caBundle = {}) override;
+                 bool useTLS, bool verifyCert,
+                 const std::string& caBundle = {}) override;
 
     void disconnect() override;
     bool isConnected() const override { return state_ == State::Connected; }

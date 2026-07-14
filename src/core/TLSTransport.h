@@ -22,7 +22,8 @@ public:
     /// caBundle: optional path to a PEM CA bundle; empty = use system defaults.
     /// Returns true on success; on failure errorMsg is populated.
     bool connect(const std::string& host, uint16_t port,
-                 bool useTLS,
+                 bool useTLS, 
+                 bool verifyCert,
                  const std::string& caBundle,
                  std::string& errorMsg);
 

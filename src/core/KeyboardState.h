@@ -59,6 +59,7 @@ public:
     // ── Key handlers (called by UI on keyDown) ────────────────────────────────
     // Returns false if the key was rejected (keyboard locked / protected field)
     bool handleChar(uint8_t asciiChar);   // printable character input
+    bool handleEbcdicChar(uint8_t ebcdic); // raw EBCDIC input (used for pasting)
     bool handleTab(bool backward = false);
     bool handleEnter();
     bool handleClear();

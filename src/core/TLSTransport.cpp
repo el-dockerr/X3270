@@ -73,9 +73,10 @@ TLSTransport::~TLSTransport() {
 }
 
 bool TLSTransport::connect(const std::string& host, uint16_t port,
-                            bool useTLS,
-                            const std::string& caBundle,
-                            std::string& errorMsg) {
+                           bool useTLS,
+                           bool verifyCert,
+                           const std::string& caBundle,
+                           std::string& errorMsg) {
     disconnect();
 
     sock_ = tcpConnect(host, port, errorMsg);
@@ -92,7 +93,13 @@ bool TLSTransport::connect(const std::string& host, uint16_t port,
         }
 
         // Certificate verification
-        SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, nullptr);
+        if (verifyCert) {
+            SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, nullptr);
+        } else {
+        // Disable certificate verification (equivalent to the -noverifycert flag)
+            SSL_CTX_set_verify(ctx_, SSL_VERIFY_NONE, nullptr);
+        }
+
         if (!caBundle.empty()) {
             if (SSL_CTX_load_verify_locations(ctx_, caBundle.c_str(), nullptr) != 1) {
                 errorMsg = "Failed to load CA bundle: " + sslLastError();
