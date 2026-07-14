@@ -306,7 +306,7 @@ Selection and Clipboard improvements
 
 - **Certificate Verification Checkbox:** Added a new toggle in the Connect dialog to explicitly enable or disable SSL/TLS certificate verification. This allows quick encrypted connections to hosts using self-signed certificates without needing to manually provide a CA bundle.
 
-### v1.7.4 — 2026-06-05
+### v1.7.5 — 2026-06-05
 
 **Insert mode improvements (3270 & 5250)**
 
