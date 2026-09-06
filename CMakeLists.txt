@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
+# ── macOS deployment target ───────────────────────────────────────────────────
+set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING
+    "Minimum macOS version supported by DX3270")
+
 project(DX3270 VERSION 1.7.5 LANGUAGES CXX OBJCXX)
 
 # ── Version / Build number ────────────────────────────────────────────────────
