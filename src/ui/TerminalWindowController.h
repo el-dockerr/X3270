@@ -1,33 +1,36 @@
 #pragma once
 #import <AppKit/AppKit.h>
-#include "EbcdicCodec.h"
-#include "TerminalModel.h"
-#include "TerminalProtocol.h"
-#include <string>
+#import "TerminalViewController.h"
 
-/// Owns the TN3270 or TN5250 session and wires the core engine to the TerminalView.
+NS_ASSUME_NONNULL_BEGIN
+
+/// A lightweight shell window that hosts a single TerminalViewController.
+/// Used for backwards compatibility with the "Quick Connect" feature.
 @interface TerminalWindowController : NSWindowController
+
+// The embedded reusable view controller
+@property (nonatomic, strong, readonly) TerminalViewController *terminalVC;
+
+// Callbacks (Forwarded to the inner TerminalViewController)
+@property (nonatomic, copy, nullable) void(^onConnected)(void);
+@property (nonatomic, copy, nullable) void(^onConnectError)(NSString*);
+@property (nonatomic, copy, nullable) void(^onClosed)(void);
 
 - (instancetype)initWithHost:(NSString*)host
                         port:(uint16_t)port
                       useSSL:(BOOL)useSSL
-                    verifyCert:(BOOL)verifyCert
+                  verifyCert:(BOOL)verifyCert
                     caBundle:(NSString*)caBundle
                     codePage:(x3270::CodePage)codePage
                        model:(x3270::TerminalModel)model
                     protocol:(x3270::TerminalProtocol)protocol;
 
-/// Callbacks for ConnectionWindowController to observe results
-@property (nonatomic, copy) void(^onConnected)(void);
-@property (nonatomic, copy) void(^onConnectError)(NSString*);
-/// Fired (on the main thread) when the terminal window has been closed by
-/// the user, so the owner can drop its strong reference.
-@property (nonatomic, copy) void(^onClosed)(void);
-
-/// Save a PNG screenshot of the terminal window to disk.
+// Forwarded native commands
 - (IBAction)saveScreenshot:(id)sender;
-
-/// Export the current screen content as a UTF-8 plain-text file.
 - (IBAction)exportText:(id)sender;
+- (IBAction)toggleVideoRecording:(id)sender;
+- (void)toggleTransferSidebar:(id)sender;
 
 @end
+
+NS_ASSUME_NONNULL_END

@@ -1,244 +1,152 @@
 #include "KeyboardState.h"
-#include <algorithm>
 
 namespace x3270 {
 
+// -----------------------------------------------------------------------------
+// Constructor
+// -----------------------------------------------------------------------------
 KeyboardState::KeyboardState(ScreenBuffer& screen, EbcdicCodec& codec)
     : screen_(screen), codec_(codec) {}
 
-// ── Lock/unlock ───────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// State Management
+// -----------------------------------------------------------------------------
 void KeyboardState::lock(LockReason reason) {
     lockReason_ = reason;
 }
 
 void KeyboardState::unlock() {
     lockReason_ = LockReason::None;
-    insertMode_ = false;
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
-uint8_t KeyboardState::currentFieldAttr() const {
-    int pos = screen_.cursorPos();
-    // Walk back to find the governing FA
-    for (int i = 0; i < screen_.size(); ++i) {
-        int p = (pos - i + screen_.size()) % screen_.size();
-        if (screen_.at(p).isFA) return screen_.at(p).attr;
+// -----------------------------------------------------------------------------
+// Data Input Handlers
+// -----------------------------------------------------------------------------
+bool KeyboardState::handleChar(uint16_t unicodeChar) {
+    if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    uint8_t ebcdic = codec_.fromUnichar(unicodeChar);
+    
+    // Attempt to insert the character into the screen buffer
+    bool ok = insertCharAtCursor(ebcdic);
+    
+    // Record the keystroke only if the insertion was successful (e.g., not blocked by protected fields)
+    if (ok && recorder_ && recorder_->isRecording()) {
+        recorder_->recordChar(unicodeChar, posBefore);
     }
-    return 0x00; // unformatted screen — default unprotected
-}
-
-bool KeyboardState::isCurrentFieldEditable() const {
-    uint8_t attr = currentFieldAttr();
-    bool prot    = (attr & FA_PROTECTED) != 0;
-    bool numeric = (attr & FA_NUMERIC)   != 0;
-    bool skip    = prot && numeric;
-    return !prot && !skip;
-}
-
-void KeyboardState::moveCursorToFirstUnprotected() {
-    for (int i = 0; i < screen_.size(); ++i) {
-        const Cell& c = screen_.at(i);
-        if (c.isFA && !c.isProtected()) {
-            screen_.setCursor((i + 1) % screen_.size());
-            return;
-        }
-    }
-    screen_.setCursor(0);
-}
-
-void KeyboardState::advanceToNextField(bool forward) {
-    int cur   = screen_.cursorPos();
-    int delta = forward ? 1 : -1;
-    for (int i = 1; i <= screen_.size(); ++i) {
-        int pos = (cur + delta * i + screen_.size() * 2) % screen_.size();
-        const Cell& c = screen_.at(pos);
-        if (c.isFA && !c.isProtected()) {
-            int target = (pos + 1) % screen_.size();
-            // BackTab: if we are already at the first character of this
-            // field (target == cur), this is the *current* field's FA --
-            // keep scanning backward to find the previous input field.
-            if (!forward && target == cur) continue;
-            screen_.setCursor(target);
-            return;
-        }
-    }
-}
-
-bool KeyboardState::insertCharAtCursor(uint8_t ebcdic) {
-    int cur = screen_.cursorPos();
-    const Cell& cell = screen_.at(cur);
-    if (cell.isFA) return false; // cursor is on FA position — skip
-
-    if (insertMode_) {
-        // Find end of field (position of next FA, exclusive)
-        int fieldEnd = (cur + 1) % screen_.size();
-        for (int i = 0; i < screen_.size(); ++i) {
-            if (screen_.at(fieldEnd).isFA) break;
-            fieldEnd = (fieldEnd + 1) % screen_.size();
-        }
-        // If the last character in the field is non-null the field is full —
-        // lock with OErr (same behaviour as a real 3270 in insert mode).
-        int lastCell = (fieldEnd - 1 + screen_.size()) % screen_.size();
-        if (lastCell != cur && screen_.at(lastCell).ch != 0x00) {
-            lock(LockReason::OErr);
-            return false;
-        }
-        // Shift cells right from lastCell back to cur
-        int shiftEnd = lastCell;
-        while (shiftEnd != cur) {
-            int prev = (shiftEnd - 1 + screen_.size()) % screen_.size();
-            screen_.at(shiftEnd).ch = screen_.at(prev).ch;
-            shiftEnd = prev;
-        }
-    }
-
-    screen_.at(cur).ch = ebcdic;
-    screen_.setMDT(cur);
-    screen_.markDirty();
-
-    // Advance cursor (stay within field)
-    int next = (cur + 1) % screen_.size();
-    if (!screen_.at(next).isFA) {
-        screen_.setCursor(next);
-    }
-    return true;
-}
-
-// ── AID transmission ──────────────────────────────────────────────────────────
-void KeyboardState::sendAID(uint8_t aidCode, bool includeModifiedFields) {
-    std::vector<uint8_t> record;
-    if (includeModifiedFields) {
-        record = screen_.buildReadModifiedRecord(aidCode);
-    } else {
-        // PA keys: just AID byte + cursor address
-        record.push_back(aidCode);
-        uint8_t addr[2];
-        ScreenBuffer::encodeAddress(screen_.cursorPos(), addr);
-        record.push_back(addr[0]);
-        record.push_back(addr[1]);
-    }
-    if (sendCb_ && sendCb_(record)) lock(LockReason::System);
-}
-
-void KeyboardState::sendPAKey(uint8_t aidCode) {
-    sendAID(aidCode, false);
-}
-
-// ── Key handlers ──────────────────────────────────────────────────────────────
-bool KeyboardState::handleChar(uint8_t asciiChar) {
-    uint8_t ebcdic = codec_.fromAscii(asciiChar);
-    return handleEbcdicChar(ebcdic);
+    return ok;
 }
 
 bool KeyboardState::handleEbcdicChar(uint8_t ebcdic) {
-    if (isLocked()) {
-        // Only escalate to OErr when we're in a normal System lock;
-        // Connecting and OErr states must not be overwritten.
-        if (lockReason_ == LockReason::System)
-            lock(LockReason::OErr);
-        return false;
+    if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    
+    // Attempt to insert the raw EBCDIC character
+    bool ok = insertCharAtCursor(ebcdic);
+    
+    // Record the keystroke, mapping back to Unicode for the macro script
+    if (ok && recorder_ && recorder_->isRecording()) {
+        uint16_t unicodeChar = codec_.toUnicode(ebcdic);
+        recorder_->recordChar(unicodeChar, posBefore);
     }
-    if (!isCurrentFieldEditable()) {
-        lock(LockReason::OErr);
-        return false;
-    }
-    return insertCharAtCursor(ebcdic);
+    return ok;
 }
 
+// -----------------------------------------------------------------------------
+// Navigation Handlers
+// -----------------------------------------------------------------------------
 bool KeyboardState::handleTab(bool backward) {
     if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    
+    // Move cursor to the next or previous unprotected field
     advanceToNextField(!backward);
-    return true;
-}
-
-bool KeyboardState::handleEnter() {
-    if (isLocked()) return false;
-    insertMode_ = false;
-    sendAID(AID_ENTER, true);
-    return true;
-}
-
-bool KeyboardState::handleClear() {
-    // Clear always sends even when locked
-    unlock();
-    screen_.eraseAll();
-    if (sendCb_) {
-        std::vector<uint8_t> record = { AID_CLEAR, 0x40, 0x40 }; // cursor at 0,0 encoded
-        if (sendCb_(record)) lock(LockReason::System);
+    
+    // Record the navigation event
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(backward ? MacroNavCode::BackTab : MacroNavCode::Tab, posBefore);
     }
-    return true;
-}
-
-bool KeyboardState::handlePF(int n) {
-    if (isLocked()) return false;
-    sendAID(pfAID(n), true);
-    return true;
-}
-
-bool KeyboardState::handlePA(int n) {
-    if (isLocked()) return false;
-    uint8_t aidCode = (n == 1) ? AID_PA1 : (n == 2) ? AID_PA2 : AID_PA3;
-    sendPAKey(aidCode);
     return true;
 }
 
 bool KeyboardState::handleBackspace() {
     if (isLocked()) return false;
-    if (!isCurrentFieldEditable()) return false;
-    int cur = screen_.cursorPos();
-    int prev = (cur - 1 + screen_.size()) % screen_.size();
-    // Don't move past an FA
-    if (screen_.at(prev).isFA) return false;
-    screen_.setCursor(prev);
-    screen_.at(prev).ch = 0x00;
-    screen_.setMDT(prev);
-    screen_.markDirty();
+    int posBefore = screen_.cursorPos();
+    
+    // Record navigation BEFORE the destructive action
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::Backspace, posBefore);
+    }
+    
+    if (isCurrentFieldEditable()) {
+        int newPos = (screen_.cursorPos() - 1 + screen_.size()) % screen_.size();
+        screen_.setCursor(newPos);
+        screen_.at(newPos).ch = codec_.fromAscii(' '); // Clear character with EBCDIC space
+        screen_.setMDT(newPos); // Set Modified Data Tag
+    } else {
+        lock(LockReason::OErr); // Operator Error if trying to backspace in protected field
+        return false;
+    }
     return true;
 }
 
 bool KeyboardState::handleDelete() {
     if (isLocked()) return false;
-    if (!isCurrentFieldEditable()) return false;
-    int cur = screen_.cursorPos();
-    // Shift everything left within the field
-    int pos = cur;
-    while (true) {
-        int next = (pos + 1) % screen_.size();
-        if (screen_.at(next).isFA) {
-            screen_.at(pos).ch = 0x00;
-            break;
-        }
-        screen_.at(pos).ch = screen_.at(next).ch;
-        pos = next;
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::Delete, posBefore);
     }
-    screen_.setMDT(cur);
-    screen_.markDirty();
+    
+    if (isCurrentFieldEditable()) {
+        screen_.at(posBefore).ch = codec_.fromAscii(' ');
+        screen_.setMDT(posBefore);
+    } else {
+        lock(LockReason::OErr);
+        return false;
+    }
     return true;
 }
 
 bool KeyboardState::handleHome() {
     if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::Home, posBefore);
+    }
+    
     moveCursorToFirstUnprotected();
     return true;
 }
 
 bool KeyboardState::handleEraseEOF() {
     if (isLocked()) return false;
-    if (!isCurrentFieldEditable()) return false;
-    int cur = screen_.cursorPos();
-    int pos = cur;
-    while (!screen_.at(pos).isFA) {
-        screen_.at(pos).ch = 0x00;
-        pos = (pos + 1) % screen_.size();
-        if (pos == cur) break; // wrapped all the way around
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::EraseEOF, posBefore);
     }
-    screen_.setMDT(cur);
-    screen_.markDirty();
+    
+    if (isCurrentFieldEditable()) {
+        screen_.eraseUnprotectedToAddress(screen_.findFieldStart(posBefore));
+        screen_.setMDT(posBefore);
+    } else {
+        lock(LockReason::OErr);
+        return false;
+    }
     return true;
 }
 
 bool KeyboardState::handleEraseInput() {
     if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::EraseInput, posBefore);
+    }
+    
+    // Clear all unprotected fields across the entire screen
     screen_.eraseAllUnprotected();
     moveCursorToFirstUnprotected();
     return true;
@@ -246,51 +154,194 @@ bool KeyboardState::handleEraseInput() {
 
 bool KeyboardState::handleNewLine() {
     if (isLocked()) return false;
-    // Move cursor to first unprotected field on the next line
-    int curRow = screen_.cursorPos() / screen_.cols();
-    int nextRowStart = ((curRow + 1) % screen_.rows()) * screen_.cols();
-    // Search forward from nextRowStart for first unprotected field
-    for (int i = 0; i < screen_.size(); ++i) {
-        int pos = (nextRowStart + i) % screen_.size();
-        if (screen_.at(pos).isFA && !screen_.at(pos).isSkip()) {
-            screen_.setCursor((pos + 1) % screen_.size());
-            return true;
-        }
-    }
+    // NewLine behaves similarly to Tab in moving to the next field
+    advanceToNextField(true);
     return true;
 }
 
 bool KeyboardState::handleCursorUp() {
     if (isLocked()) return false;
-    int pos = screen_.cursorPos();
-    screen_.setCursor((pos - screen_.cols() + screen_.size()) % screen_.size());
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::CursorUp, posBefore);
+    }
+    
+    screen_.setCursor((posBefore - screen_.cols() + screen_.size()) % screen_.size());
     return true;
 }
 
 bool KeyboardState::handleCursorDown() {
     if (isLocked()) return false;
-    int pos = screen_.cursorPos();
-    screen_.setCursor((pos + screen_.cols()) % screen_.size());
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::CursorDown, posBefore);
+    }
+    
+    screen_.setCursor((posBefore + screen_.cols()) % screen_.size());
     return true;
 }
 
 bool KeyboardState::handleCursorLeft() {
     if (isLocked()) return false;
-    screen_.setCursor((screen_.cursorPos() - 1 + screen_.size()) % screen_.size());
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::CursorLeft, posBefore);
+    }
+    
+    screen_.setCursor((posBefore - 1 + screen_.size()) % screen_.size());
     return true;
 }
 
 bool KeyboardState::handleCursorRight() {
     if (isLocked()) return false;
-    screen_.setCursor((screen_.cursorPos() + 1) % screen_.size());
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::CursorRight, posBefore);
+    }
+    
+    screen_.setCursor((posBefore + 1) % screen_.size());
+    return true;
+}
+
+// -----------------------------------------------------------------------------
+// AID Handlers (Host Transmission)
+// -----------------------------------------------------------------------------
+bool KeyboardState::handleEnter() {
+    if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    
+    // Record AID and capture the screen guard BEFORE sending and locking
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordAIDKey(AID_ENTER, posBefore, &screen_);
+    }
+    
+    sendAID(AID_ENTER, true);
+    return true;
+}
+
+bool KeyboardState::handleClear() {
+    if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    
+    // Record Clear AID. Screen guard is captured here as well.
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordAIDKey(AID_CLEAR, posBefore, &screen_);
+    }
+    
+    // Clear does not send modified fields
+    sendAID(AID_CLEAR, false);
+    return true;
+}
+
+bool KeyboardState::handlePF(int n) {
+    if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordAIDKey(pfAID(n), posBefore, &screen_);
+    }
+    
+    sendAID(pfAID(n), true);
+    return true;
+}
+
+bool KeyboardState::handlePA(int n) {
+    if (isLocked()) return false;
+    int posBefore = screen_.cursorPos();
+    
+    uint8_t aidCode = AID_PA1;
+    if (n == 2) aidCode = AID_PA2;
+    if (n == 3) aidCode = AID_PA3;
+    
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordAIDKey(aidCode, posBefore, &screen_);
+    }
+    
+    sendPAKey(aidCode);
     return true;
 }
 
 bool KeyboardState::handleReset() {
-    if (lockReason_ == LockReason::OErr || lockReason_ == LockReason::System) {
-        unlock();
+    // Reset unlocks the keyboard after an operator error (OErr)
+    unlock();
+    return true;
+}
+
+// -----------------------------------------------------------------------------
+// Internal Helpers
+// -----------------------------------------------------------------------------
+void KeyboardState::sendAID(uint8_t aidCode, bool includeModifiedFields) {
+    lock(LockReason::System); // Lock keyboard waiting for host response
+    if (sendCb_) {
+        sendCb_(screen_.buildReadModifiedRecord(aidCode, includeModifiedFields));
     }
-    insertMode_ = false;
+}
+
+void KeyboardState::sendPAKey(uint8_t aidCode) {
+    lock(LockReason::System);
+    if (sendCb_) {
+        // PA keys send only the AID code, no modified fields
+        sendCb_({aidCode});
+    }
+}
+
+bool KeyboardState::isCurrentFieldEditable() const {
+    int fa = screen_.findFieldStart(screen_.cursorPos());
+    if (fa < 0) return true; // CRITICAL FIX: Unformatted screens are fully editable
+    return (screen_.at(fa).attr & FA_PROTECTED) == 0;
+}
+
+uint8_t KeyboardState::currentFieldAttr() const {
+    int fa = screen_.findFieldStart(screen_.cursorPos());
+    return (fa >= 0) ? screen_.at(fa).attr : 0;
+}
+
+void KeyboardState::advanceToNextField(bool forward) {
+    int pos = screen_.cursorPos();
+    int sz = screen_.size();
+    
+    // Scan up to one full screen size to find the next Field Attribute
+    for (int i = 0; i < sz; ++i) {
+        pos = (pos + (forward ? 1 : -1) + sz) % sz;
+        if (screen_.at(pos).isFA) {
+            int nextData = (pos + 1) % sz;
+            if (!screen_.at(pos).isProtected()) {
+                screen_.setCursor(nextData);
+                return;
+            }
+        }
+    }
+}
+
+void KeyboardState::moveCursorToFirstUnprotected() {
+    int sz = screen_.size();
+    for (int i = 0; i < sz; ++i) {
+        if (screen_.at(i).isFA && !screen_.at(i).isProtected()) {
+            screen_.setCursor((i + 1) % sz);
+            return;
+        }
+    }
+}
+
+bool KeyboardState::insertCharAtCursor(uint8_t ebcdic) {
+    if (!isCurrentFieldEditable()) {
+        lock(LockReason::OErr);
+        return false;
+    }
+    
+    // Write exactly at the user's visual cursor, NOT the host's background pointer
+    int pos = screen_.cursorPos();
+    screen_.at(pos).ch = ebcdic;
+    screen_.setMDT(pos); // Mark field as modified
+    
+    // Advance the visual cursor
+    screen_.setCursor((pos + 1) % screen_.size());
+    screen_.markDirty();
+    
     return true;
 }
 

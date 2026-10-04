@@ -1,0 +1,29 @@
+[
+  { "cmd": "LOG", "args": "<jobid>", "desc": "DX3270: Retrieve Job spool log via SSH/Rexx (e.g., LOG JOB12345)", "target": "oob", "exec": "DX3270_INTERNAL_LOG {arg}" },
+  { "cmd": "CAT", "args": "<dataset>", "desc": "DX3270: Fetch and display z/OS dataset content (e.g., CAT SYS1.PARMLIB(SMFPRM00))", "target": "oob", "exec": "cat \"//'{arg}'\"" },
+  { "cmd": "STATUS", "args": "<jobid>", "desc": "DX3270: Query Job status out-of-band (e.g., STATUS STC00123)", "target": "oob", "exec": "tso \"STATUS {arg}\"" },
+  { "cmd": "PURGE", "args": "<jobid>", "desc": "DX3270: Purge Job output via SSH (e.g., PURGE JOB00456)", "target": "oob", "exec": "tso \"CANCEL {arg} PURGE\"" },
+  
+  { "cmd": "OPERCMD", "args": "<mvs_cmd>", "desc": "USS: Issue MVS Operator Command (requires auth, e.g., OPERCMD D A,L)", "target": "oob", "exec": "opercmd \"{arg}\"" },
+  { "cmd": "NETSTAT", "args": "<port/job>", "desc": "USS: Check TCP/IP port or job usage (e.g., NETSTAT 10443)", "target": "oob", "exec": "netstat -a -p tcp | grep -i {arg}" },
+  { "cmd": "ZFSINFO", "args": "<aggr_name>", "desc": "USS: Display detailed ZFS aggregate space usage (e.g., ZFSINFO OMVS.PRV.ZFS)", "target": "oob", "exec": "zfsadm aggrinfo -aggr {arg}" },
+  { "cmd": "FIND-BIG", "args": "<path>", "desc": "USS: Find files > 100MB in a path (e.g., FIND-BIG /var/log)", "target": "oob", "exec": "find {arg} -type f -size +100M -xdev -exec ls -lh {} \\;" },
+  { "cmd": "FIND-TXT", "args": "<string> <path>", "desc": "USS: Search string recursively in files (e.g., FIND-TXT 'ERROR' /u/ibmuser)", "target": "oob", "exec": "grep -rnw '{arg}'" },
+  { "cmd": "ENCLAVES", "args": "", "desc": "USS: List active WLM enclaves and CPU usage", "target": "oob", "exec": "ps -ef -o pid,state,time,command | grep -E 'PID|ENCLAVE'" },
+  { "cmd": "APF-LIST", "args": "<dsname>", "desc": "USS: Check if a dataset is APF authorized (via operator command)", "target": "oob", "exec": "opercmd \"D PROG,APF,DSNAME={arg}\"" },
+  { "cmd": "LSOF", "args": "<pid>", "desc": "USS: List open files for a specific UNIX Process ID", "target": "oob", "exec": "lsof -p {arg}" },
+
+  { "cmd": "TSO ISRDDN", "args": "", "desc": "TSO: Launch ISRDDN utility to inspect current DD allocations", "target": "ispf" },
+  { "cmd": "TSO LISTMEM", "args": "'<pds_name>'", "desc": "TSO: List all members of a PDS/PDSE (e.g., TSO LISTMEM 'SYS1.PROCLIB')", "target": "ispf", "exec": "tso \"LISTDS {arg} MEMBERS\"" },
+  { "cmd": "TSO PROFILE", "args": "WTPMSG MSGID", "desc": "TSO: Enable detailed system messages and message IDs", "target": "ispf" },
+  { "cmd": "TSO SMF", "args": "", "desc": "TSO: Switch SMF recording datasets (operator auth required)", "target": "ispf", "exec": "tso \"CONSOLE SYSCMD(I SMF)\"" },
+
+  { "cmd": "=3.4", "args": "[<dslevel>]", "desc": "ISPF: Data Set List Utility (e.g., =3.4 SYS1.*)", "target": "ispf" },
+  { "cmd": "=3.14", "args": "", "desc": "ISPF: SuperC Search (Find string across multiple members/datasets)", "target": "ispf" },
+  { "cmd": "SRCHFOR", "args": "'<string>'", "desc": "ISPF 3.4: Issue SRCHFOR against a displayed dataset list", "target": "ispf" },
+  
+  { "cmd": "/D", "args": "A,L", "desc": "SDSF: Display active jobs, TSO users, and started tasks", "target": "ispf" },
+  { "cmd": "/D", "args": "IPLINFO", "desc": "SDSF: Display IPL information and system status", "target": "ispf" },
+  { "cmd": "/D", "args": "M=CPU", "desc": "SDSF: Display CPU status and LPAR information", "target": "ispf" },
+  { "cmd": "SET DISPLAY", "args": "ON", "desc": "SDSF: Show SDSF filtering criteria on screen", "target": "ispf" },
+]

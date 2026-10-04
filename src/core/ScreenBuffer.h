@@ -93,6 +93,9 @@ public:
     /// Set buffer pointer (SetBufferAddress order)
     void setBufferAddress(int offset) { bufPtr_ = clamp(offset); }
     int  bufferPointer() const        { return bufPtr_; }
+    /// Set or clear the alternate mode flag. In alternate mode, certain rendering
+    /// and addressing behaviors may differ (e.g., for large custom screens).
+    void setAlternateMode(bool alternate);
 
     /// Repeat character from current pointer to destOffset
     void repeatToAddress(int destOffset, uint8_t ebcdic);

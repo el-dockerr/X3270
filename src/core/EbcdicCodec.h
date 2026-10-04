@@ -6,9 +6,13 @@
 namespace x3270 {
 
 enum class CodePage {
-    CP037,   // US/Canada/Australia — most common z/OS
-    CP500,   // International (ISO)
-    CP1047,  // Open Systems / MVS C compiler
+    CP037,   // US / Canada
+    CP500,   // International
+    CP1047,  // Open Systems / MVS C
+    CP280,   // Italy
+    CP273,   // Germany / Austria
+    CP284,   // Spain / Latin America
+    CP285    // United Kingdom
 };
 
 class EbcdicCodec {
@@ -40,6 +44,9 @@ public:
     /// stored correctly.
     void setHerculesBrackets(bool enabled);
     bool herculesBrackets() const { return herculesBrackets_; }
+
+    /// Convenience: convert a Unicode code point (BMP only) to an EBCDIC byte
+    uint8_t fromUnichar(uint16_t unicode) const;
 
     // Special EBCDIC values (code-page independent)
     static constexpr uint8_t EBCDIC_NUL   = 0x00;

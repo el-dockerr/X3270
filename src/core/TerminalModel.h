@@ -38,7 +38,7 @@ inline int colsForModel(TerminalModel m) {
 inline const char* modelTypeName(TerminalModel m) {
     switch (m) {
     case TerminalModel::Model3:      return "IBM-3278-3-E";
-    case TerminalModel::Model4:      return "IBM-3278-4-E";
+    case TerminalModel::Model4:      return "IBM-3279-4-E"; //"IBM-3278-4-E";
     case TerminalModel::Model5:      return "IBM-3278-5-E";
     case TerminalModel::LargeCustom: return "IBM-3278-5-E";
     default:                         return "IBM-3278-2-E";

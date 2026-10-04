@@ -70,6 +70,19 @@ void ScreenBuffer::resetAllMDT() {
     dirty_ = true;
 }
 
+// ── Alternate mode handling ───────────────────────────────────────────────────
+void ScreenBuffer::setAlternateMode(bool alternate) {
+    int newRows = alternate ? rowsForModel(model_) : 24;
+    int newCols = alternate ? colsForModel(model_) : 80;
+
+    if (rows_ != newRows || cols_ != newCols) {
+        rows_ = newRows;
+        cols_ = newCols;
+        cells_.resize(rows_ * cols_);
+    }
+    eraseAll();
+}
+
 void ScreenBuffer::setCursorToHome() {
     // Walk cells in order and find the first FA cell that is editable (not protected,
     // not bypass).  In 5250 mode, input fields have attr = ffw1ToAttr(FFW1) which
@@ -145,7 +158,7 @@ void ScreenBuffer::startInlineAttr5250(uint8_t attrByte5250) {
 
 void ScreenBuffer::repeatToAddress(int destOffset, uint8_t ebcdic) {
     int dest = clamp(destOffset);
-    while (bufPtr_ != dest) {
+    do {
         Cell& c     = cells_[bufPtr_];
         c.ch        = ebcdic;
         c.attr      = currentAttr_;
@@ -154,19 +167,18 @@ void ScreenBuffer::repeatToAddress(int destOffset, uint8_t ebcdic) {
         c.bgColor   = currentBgColor_;
         c.highlight = currentHighlight_;
         bufPtr_ = clamp(bufPtr_ + 1);
-    }
+    } while (bufPtr_ != dest);
     dirty_ = true;
 }
 
 void ScreenBuffer::eraseUnprotectedToAddress(int destOffset) {
     int dest = clamp(destOffset);
-    int pos  = bufPtr_;
-    while (pos != dest) {
-        if (!cells_[pos].isFA && !cells_[pos].isProtected()) {
-            cells_[pos].ch = 0x00;
+    do {
+        if (!cells_[bufPtr_].isFA && !cells_[bufPtr_].isProtected()) {
+            cells_[bufPtr_].ch = 0x00;
         }
-        pos = clamp(pos + 1);
-    }
+        bufPtr_ = clamp(bufPtr_ + 1);
+    } while (bufPtr_ != dest);
     dirty_ = true;
 }
 

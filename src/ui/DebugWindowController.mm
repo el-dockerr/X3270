@@ -1,4 +1,5 @@
 #import "DebugWindowController.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <AppKit/AppKit.h>
 #import <float.h>
 #include "EbcdicCodec.h"
@@ -205,7 +206,14 @@ static const CGFloat kFontSize = 11.0;
     NSSavePanel *sp         = [NSSavePanel savePanel];
     sp.title                = @"Save Traffic Log";
     sp.nameFieldStringValue = @"tn3270-traffic.log";
-    sp.allowedFileTypes     = @[@"log", @"txt"];
+    if (@available(macOS 11.0, *)) {
+        sp.allowedContentTypes = @[UTTypeLog, UTTypePlainText];
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        sp.allowedFileTypes = @[@"log", @"txt"];
+#pragma clang diagnostic pop
+    }
 
     [sp beginSheetModalForWindow:self.window
                completionHandler:^(NSModalResponse result) {

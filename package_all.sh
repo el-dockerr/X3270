@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# package_all.sh — Build both Apple Silicon and Intel DMGs in one deployment step.
+# package_all.sh — Build Apple Silicon (AppKit), Intel (AppKit), and Qt DMGs in one deployment step.
 #
 # Usage:
 #   ./package_all.sh               # uses BUILD_NUMBER=1 (default)
 #   BUILD_NUMBER=42 ./package_all.sh
 #
-# Output (both in dist/):
-#   DX3270-<version>-build<BUILD_NUMBER>.dmg          ← Apple Silicon
-#   DX3270-<version>-build<BUILD_NUMBER>-Intel.dmg    ← Intel / older Macs
+# Output (all in dist/):
+#   DX3270-<version>-build<BUILD_NUMBER>.dmg          ← Apple Silicon (AppKit)
+#   DX3270-<version>-build<BUILD_NUMBER>-Intel.dmg    ← Intel (AppKit)
+#   DX3270-Qt-<version>-build<BUILD_NUMBER>.dmg       ← Apple Silicon (Qt6)
 
 set -euo pipefail
 
@@ -20,7 +21,6 @@ echo "======================================================"
 echo ""
 
 # Track DMGs produced so we can print a clean summary at the end.
-# Each sub-script prints its own detailed output; we just record results.
 BEFORE_DMGS=()
 if [ -d "${SCRIPT_DIR}/dist" ]; then
     while IFS= read -r -d '' f; do
@@ -28,18 +28,25 @@ if [ -d "${SCRIPT_DIR}/dist" ]; then
     done < <(find "${SCRIPT_DIR}/dist" -name "*.dmg" -print0 2>/dev/null)
 fi
 
-# ── [1/2] Apple Silicon (arm64) ───────────────────────────────────────────────
+# ── [1/3] Apple Silicon (arm64 - AppKit) ──────────────────────────────────────
 echo "------------------------------------------------------"
-echo "  [1/2] Apple Silicon (arm64)"
+echo "  [1/3] Apple Silicon Native (arm64)"
 echo "------------------------------------------------------"
 "${SCRIPT_DIR}/package.sh"
 echo ""
 
-# ── [2/2] Intel (x86_64) ──────────────────────────────────────────────────────
+# ── [2/3] Intel (x86_64 - AppKit) ─────────────────────────────────────────────
 echo "------------------------------------------------------"
-echo "  [2/2] Intel (x86_64)"
+echo "  [2/3] Intel Native (x86_64)"
 echo "------------------------------------------------------"
 "${SCRIPT_DIR}/package_intel.sh"
+echo ""
+
+# ── [3/3] Apple Silicon (arm64 - Qt6) ─────────────────────────────────────────
+echo "------------------------------------------------------"
+echo "  [3/3] Cross-Platform Build (Qt6)"
+echo "------------------------------------------------------"
+"${SCRIPT_DIR}/package_qt.sh"
 echo ""
 
 # ── Summary ───────────────────────────────────────────────────────────────────
@@ -47,10 +54,8 @@ echo "======================================================"
 echo "  Deliverables"
 echo "======================================================"
 
-# List only newly created DMGs (created/modified during this run)
 NEW_DMGS=()
 while IFS= read -r -d '' f; do
-    # Include if it wasn't in the list before
     already_existed=false
     for existing in "${BEFORE_DMGS[@]+"${BEFORE_DMGS[@]}"}"; do
         if [ "${existing}" = "${f}" ]; then
@@ -64,7 +69,6 @@ while IFS= read -r -d '' f; do
 done < <(find "${SCRIPT_DIR}/dist" -name "*.dmg" -print0 2>/dev/null)
 
 if [ "${#NEW_DMGS[@]}" -eq 0 ]; then
-    # Fallback: list everything in dist/
     while IFS= read -r -d '' f; do
         NEW_DMGS+=("$f")
     done < <(find "${SCRIPT_DIR}/dist" -name "*.dmg" -print0 2>/dev/null)
@@ -76,6 +80,7 @@ for dmg in $(printf '%s\n' "${NEW_DMGS[@]}" | sort); do
 done
 
 echo ""
-echo "Both DMGs are ready for distribution."
-echo "  • Apple Silicon DMG → users on M-series Macs (2020+)"
-echo "  • Intel DMG         → users on Intel Macs (older Macs)"
+echo "All DMGs are ready for distribution."
+echo "  • DX3270 DMG         → Native AppKit for M-series Macs"
+echo "  • DX3270-Intel DMG   → Native AppKit for older Intel Macs"
+echo "  • DX3270-Qt DMG      → Multi-platform core (Qt6 Edition)"

@@ -50,7 +50,7 @@
     __block CGFloat curY = 304;
 
     // ── Header: app name, version and author ──────────────────────────────────
-    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.7.5";
+    NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.7.6";
 
     NSTextField *appName = [NSTextField labelWithString:@"DX3270"];
     appName.font = [NSFont boldSystemFontOfSize:16];
@@ -161,7 +161,15 @@
 
     // Code page
     _codePagePopup = [[NSPopUpButton alloc] init];
-    [_codePagePopup addItemsWithTitles:@[@"CP037 (US/Canada)", @"CP500 (International)", @"CP1047 (Open Systems)"]];
+    [_codePagePopup addItemsWithTitles:@[
+        @"CP037 (US/Canada)",
+        @"CP500 (International)",
+        @"CP1047 (Open Systems)",
+        @"CP280 (Italy)",
+        @"CP273 (Germany)",
+        @"CP284 (Spain)",
+        @"CP285 (United Kingdom)"
+    ]];
     addRow(@"Code Page:", _codePagePopup);
 
     // Screen model
@@ -320,6 +328,10 @@
     switch (_codePagePopup.indexOfSelectedItem) {
     case 1:  cp = x3270::CodePage::CP500;  break;
     case 2:  cp = x3270::CodePage::CP1047; break;
+    case 3:  cp = x3270::CodePage::CP280;  break;
+    case 4:  cp = x3270::CodePage::CP273;  break;
+    case 5:  cp = x3270::CodePage::CP284;  break;
+    case 6:  cp = x3270::CodePage::CP285;  break;
     default: cp = x3270::CodePage::CP037;  break;
     }
 
@@ -388,6 +400,11 @@
             __strong typeof(weakSelf) s = weakSelf;
             __strong typeof(weakTwc)  t = weakTwc;
             if (s && t) [s.terminals removeObject:t];
+
+            s.connectButton.enabled = YES;
+            if ([s.statusLabel.stringValue isEqualToString:@"Connecting..."]) {
+                    s.statusLabel.stringValue = @"";
+            }
         });
     };
 }

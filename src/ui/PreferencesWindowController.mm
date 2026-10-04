@@ -1,22 +1,26 @@
 #import "PreferencesWindowController.h"
 #import "TerminalView.h"
+#import "../utils/TimeMachineManager.h"
 
 @implementation PreferencesWindowController {
     NSButton *_use3270FontCheckbox;
     NSButton *_herculesBracketsCheckbox;
+    NSButton *_crosshairRulerCheckbox;
+    NSButton *_timeMachineCheckbox;
 }
 
 + (instancetype)sharedController {
     static PreferencesWindowController *shared = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        // Finestra ridotta a 400px di altezza, siccome abbiamo tolto la tabella
         NSWindow *win = [[NSWindow alloc]
-                         initWithContentRect:NSMakeRect(0, 0, 420, 320)
+                         initWithContentRect:NSMakeRect(0, 0, 420, 400)
                                    styleMask:NSWindowStyleMaskTitled
                                             |NSWindowStyleMaskClosable
-                                   backing:NSBackingStoreBuffered
-                                      defer:NO];
-        win.title = @"DX3270 — Preferences";
+                                     backing:NSBackingStoreBuffered
+                                       defer:NO];
+        win.title = @"DX3270 - Preferences";
         win.releasedWhenClosed = NO;
         [win center];
         shared = [[PreferencesWindowController alloc] initWithWindow:win];
@@ -25,47 +29,47 @@
     return shared;
 }
 
+#pragma mark - UI Setup
 - (void)buildUI {
     NSView *cv = self.window.contentView;
     CGFloat margin = 20;
 
-    // ── Section: Font ─────────────────────────────────────────────────────────
+    // ==========================================
+    // Section: Terminal Font
+    // ==========================================
     NSTextField *fontHeader = [NSTextField labelWithString:@"Terminal Font"];
     fontHeader.font = [NSFont boldSystemFontOfSize:13];
-    fontHeader.frame = NSMakeRect(margin, 280, 380, 20);
+    fontHeader.frame = NSMakeRect(margin, 350, 380, 20);
     [cv addSubview:fontHeader];
 
-    NSBox *sep1 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 274, 380, 1)];
+    NSBox *sep1 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 344, 380, 1)];
     sep1.boxType = NSBoxSeparator;
     [cv addSubview:sep1];
 
-    // Checkbox: use IBM 3270 font
     _use3270FontCheckbox = [NSButton checkboxWithTitle:@"Use IBM 3270 font (by Ricardo Bánffy)"
                                                 target:self
                                                 action:@selector(fontCheckboxChanged:)];
-    _use3270FontCheckbox.frame = NSMakeRect(margin, 246, 380, 22);
+    _use3270FontCheckbox.frame = NSMakeRect(margin, 316, 380, 22);
     BOOL currentValue = [[NSUserDefaults standardUserDefaults] boolForKey:kPref3270FontEnabled];
     _use3270FontCheckbox.state = currentValue ? NSControlStateValueOn : NSControlStateValueOff;
     [cv addSubview:_use3270FontCheckbox];
 
-    // Descriptive note
     NSTextField *note = [NSTextField wrappingLabelWithString:
         @"Replaces the default Menlo font with the authentic IBM 3270 monospace font. "
          "The font is bundled with this app and designed to match the look of original "
          "IBM 3270 terminals."];
     note.textColor = [NSColor secondaryLabelColor];
     note.font = [NSFont systemFontOfSize:11];
-    note.frame = NSMakeRect(margin + 18, 196, 362, 44);
+    note.frame = NSMakeRect(margin + 18, 266, 362, 44);
     [cv addSubview:note];
 
-    // Attribution link
     NSMutableAttributedString *linkTitle = [[NSMutableAttributedString alloc]
         initWithString:@"3270font on GitHub (github.com/rbanffy/3270font)"
             attributes:@{
                 NSFontAttributeName:            [NSFont systemFontOfSize:11],
                 NSForegroundColorAttributeName: [NSColor linkColor],
             }];
-    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin + 18, 178, 362, 18)];
+    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin + 18, 248, 362, 18)];
     [linkBtn setAttributedTitle:linkTitle];
     linkBtn.buttonType = NSButtonTypeMomentaryLight;
     linkBtn.bordered = NO;
@@ -74,20 +78,22 @@
     linkBtn.alignment = NSTextAlignmentLeft;
     [cv addSubview:linkBtn];
 
-    // ── Section: Compatibility ────────────────────────────────────────────────
-    NSTextField *compatHeader = [NSTextField labelWithString:@"Compatibility"];
+    // ==========================================
+    // Section: Compatibility & Features
+    // ==========================================
+    NSTextField *compatHeader = [NSTextField labelWithString:@"Compatibility & Features"];
     compatHeader.font = [NSFont boldSystemFontOfSize:13];
-    compatHeader.frame = NSMakeRect(margin, 144, 380, 20);
+    compatHeader.frame = NSMakeRect(margin, 200, 380, 20);
     [cv addSubview:compatHeader];
 
-    NSBox *sep2 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 138, 380, 1)];
+    NSBox *sep2 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 194, 380, 1)];
     sep2.boxType = NSBoxSeparator;
     [cv addSubview:sep2];
 
     _herculesBracketsCheckbox = [NSButton checkboxWithTitle:@"Display Hercules-style EBCDIC brackets as [ ]"
                                                      target:self
                                                      action:@selector(herculesBracketsChanged:)];
-    _herculesBracketsCheckbox.frame = NSMakeRect(margin, 110, 380, 22);
+    _herculesBracketsCheckbox.frame = NSMakeRect(margin, 166, 380, 22);
     BOOL bracketsValue = [[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets];
     _herculesBracketsCheckbox.state = bracketsValue ? NSControlStateValueOn : NSControlStateValueOff;
     [cv addSubview:_herculesBracketsCheckbox];
@@ -95,18 +101,34 @@
     NSTextField *compatNote = [NSTextField wrappingLabelWithString:
         @"For Hercules-hosted MVS (e.g. TK5) where the host code page is CP1047. "
          "Renders inbound 0xAD/0xBD (and 0x4A/0x5A) as [ and ], and sends typed "
-         "brackets as 0xAD/0xBD so the host stores them natively.\n\n"
-         "Note: ISPF EDIT may still display brackets as blank in its data row "
-         "because [ and ] fall outside its \u201cdisplayable character set\u201d \u2014 "
-         "this is a host-side filter, not a terminal bug. Use HEX ON or BROWSE "
-         "to confirm the bytes are stored correctly."];
+         "brackets as 0xAD/0xBD so the host stores them natively."];
     compatNote.textColor = [NSColor secondaryLabelColor];
     compatNote.font = [NSFont systemFontOfSize:11];
-    compatNote.frame = NSMakeRect(margin + 18, 50, 362, 56);
+    compatNote.frame = NSMakeRect(margin + 18, 118, 362, 44);
     [cv addSubview:compatNote];
 
-    // ── Footer ────────────────────────────────────────────────────────────────
-    NSBox *sep3 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 36, 380, 1)];
+    _crosshairRulerCheckbox = [NSButton checkboxWithTitle:@"Show Crosshair Ruler (Cursor Guide) by default"
+                                                   target:self
+                                                   action:@selector(crosshairRulerChanged:)];
+    _crosshairRulerCheckbox.frame = NSMakeRect(margin, 88, 380, 22);
+    BOOL rulerValue = [[NSUserDefaults standardUserDefaults] boolForKey:kPrefCrosshairRuler];
+    _crosshairRulerCheckbox.state = rulerValue ? NSControlStateValueOn : NSControlStateValueOff;
+    [cv addSubview:_crosshairRulerCheckbox];
+
+    _timeMachineCheckbox = [NSButton checkboxWithTitle:@"Record screen history (Time-Machine & Diff)"
+                                                target:self
+                                                action:@selector(timeMachineChanged:)];
+    _timeMachineCheckbox.frame = NSMakeRect(margin, 62, 380, 22);
+    BOOL tmEnabled = [[NSUserDefaults standardUserDefaults] objectForKey:@"DX3270_EnableTimeMachine"]
+                      ? [[NSUserDefaults standardUserDefaults] boolForKey:@"DX3270_EnableTimeMachine"]
+                      : YES;
+    _timeMachineCheckbox.state = tmEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [cv addSubview:_timeMachineCheckbox];
+
+    // ==========================================
+    // Footer
+    // ==========================================
+    NSBox *sep3 = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 46, 380, 1)];
     sep3.boxType = NSBoxSeparator;
     [cv addSubview:sep3];
 
@@ -114,16 +136,14 @@
         @"More options coming: colour scheme, code page defaults, keyboard mapping."];
     futureLbl.textColor = [NSColor tertiaryLabelColor];
     futureLbl.font = [NSFont systemFontOfSize:10];
-    futureLbl.frame = NSMakeRect(margin, 12, 380, 18);
+    futureLbl.frame = NSMakeRect(margin, 22, 380, 18);
     [cv addSubview:futureLbl];
 }
 
-// ── Actions ───────────────────────────────────────────────────────────────────
-
+#pragma mark - Actions
 - (void)fontCheckboxChanged:(NSButton *)sender {
     BOOL enabled = (sender.state == NSControlStateValueOn);
     [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:kPref3270FontEnabled];
-    // NSUserDefaultsDidChangeNotification is posted automatically; TerminalView observes it.
 }
 
 - (void)herculesBracketsChanged:(NSButton *)sender {
@@ -136,4 +156,13 @@
         openURL:[NSURL URLWithString:@"https://github.com/rbanffy/3270font"]];
 }
 
+- (void)crosshairRulerChanged:(NSButton *)sender {
+    BOOL enabled = (sender.state == NSControlStateValueOn);
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:kPrefCrosshairRuler];
+}
+
+- (void)timeMachineChanged:(NSButton *)sender {
+    BOOL enabled = (sender.state == NSControlStateValueOn);
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"DX3270_EnableTimeMachine"];
+}
 @end

@@ -12,7 +12,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 APP_NAME="DX3270"
-VERSION="1.7.5"
+VERSION="1.7.6"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 DMG_NAME="${APP_NAME}-${VERSION}-build${BUILD_NUMBER}"
 BUILD_DIR="$(pwd)/build_release"
@@ -38,10 +38,31 @@ if [ ! -d "${APP_PATH}" ]; then
     exit 1
 fi
 
+# ── 1b. Strip local symbols ───────────────────────────────────────────────────
+echo "==> Stripping local symbols to reduce size"
+if [ -f "${APP_PATH}/Contents/MacOS/${APP_NAME}" ]; then
+    strip -x "${APP_PATH}/Contents/MacOS/${APP_NAME}"
+fi
+if [ -f "${BUILD_DIR}/dx3270_headless" ]; then
+    strip -x "${BUILD_DIR}/dx3270_headless"
+fi
+
 # ── 2. Stage the DMG contents ─────────────────────────────────────────────────
 echo ""
 echo "==> Staging DMG contents"
 cp -R "${APP_PATH}" "${STAGING_DIR}/${APP_NAME}.app"
+
+
+HEADLESS_BIN="${BUILD_DIR}/dx3270_headless"
+if [ -f "${HEADLESS_BIN}" ]; then
+    echo "==> Including dx3270_headless in the App Bundle and the DMG"
+    # 1. Add the headless binary inside the main app bundle
+    cp "${HEADLESS_BIN}" "${STAGING_DIR}/${APP_NAME}.app/Contents/MacOS/"
+    # 2. Optionally copy to the root of the DMG for quick CLI access
+    cp "${HEADLESS_BIN}" "${STAGING_DIR}/dx3270_headless"
+fi
+
+
 # Symlink to /Applications for drag-install UX
 ln -s /Applications "${STAGING_DIR}/Applications"
 

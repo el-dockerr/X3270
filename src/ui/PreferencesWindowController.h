@@ -1,7 +1,7 @@
 #pragma once
 #import <AppKit/AppKit.h>
 
-@interface PreferencesWindowController : NSWindowController
+@interface PreferencesWindowController : NSWindowController <NSTableViewDataSource, NSTableViewDelegate>
 
 + (instancetype)sharedController;
 

@@ -1,0 +1,56 @@
+[
+  {
+    "name": "SDSF Job Status Lists",
+    "keywords": [
+      "STATUS DISPLAY",
+      "HELD OUTPUT",
+      "DISPLAY ACTIVE",
+      "OUTPUT DISPLAY",
+      "INPUT QUEUE"
+    ],
+    "action": "?"
+  },
+  {
+    "name": "SDSF Spool Dataset Viewers",
+    "keywords": [
+      "JOB DATA SET",
+      "DS DISPLAY",
+      "DATA SET DISPLAY"
+    ],
+    "action": "S"
+  },
+  {
+    "name": "SDSF Devices & System Resources",
+    "keywords": [
+      "INITIATOR DISPLAY",
+      "PRINTER DISPLAY",
+      "LINE DISPLAY",
+      "NODE DISPLAY",
+      "PUNCH DISPLAY",
+      "READER DISPLAY",
+      "HEALTH CHECKER"
+    ],
+    "action": "S"
+  },
+  {
+    "name": "ISPF Data Set & Member Selection Lists",
+    "keywords": [
+      "MEMBER LIST",
+      "DATA SET LIST",
+      "DSLIST",
+      "VTOC SUMMARY",
+      "VOLUME LIST"
+    ],
+    "action": "S"
+  },
+  {
+    "name": "SYSVIEW & Third-Party Performance Monitors",
+    "keywords": [
+      "SYSVIEW",
+      "JOB OVERVIEW",
+      "ACTIVITY MONITOR",
+      "RESOURCE MONITOR"
+    ],
+    "action": "S"
+  }
+]

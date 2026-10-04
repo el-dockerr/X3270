@@ -140,6 +140,11 @@ void DataStreamParser::processRecord(const std::vector<uint8_t>& record) {
 
 // ── Command dispatch ──────────────────────────────────────────────────────────
 void DataStreamParser::handleCommand(uint8_t cmd) {
+    // Reset extended attributes at the beginning of each host command (IBM 3270 Specification)
+    screen_.setCurrentFgColor(0x00);
+    screen_.setCurrentBgColor(0x00);
+    screen_.setCurrentHighlight(0x00);
+
     switch (cmd) {
     case CMD_WRITE:
     case CMD_WRITE_SNA:
@@ -188,11 +193,10 @@ void DataStreamParser::handleCommand(uint8_t cmd) {
     }
 }
 
-void DataStreamParser::doWrite(bool eraseFirst, bool /*alternate*/) {
+void DataStreamParser::doWrite(bool eraseFirst, bool alternate) {
     if (eraseFirst) {
-        screen_.eraseAll();  // resets bufPtr_, cursorPos_, and currentAttr_
+        screen_.setAlternateMode(alternate);  // Dynamically switch between 24x80 and the extended size
     }
-    // Plain Write: buffer address is unchanged; host uses SBA orders to position.
     state_ = ParseState::WCC;
 }
 
@@ -291,9 +295,13 @@ void DataStreamParser::handleWSF(const std::vector<uint8_t>& record) {
             // ── Begin/End of Graphics ─────────────────────────────────────────
             // Signals the start of a new GOCA frame.  Reset parser state so
             // stale drawing commands from a previous frame are not re-applied.
-            if (graphics_ && gocaParser_) {
-                graphics_->clear();
-                gocaParser_->reset();
+            //if (graphics_ && gocaParser_) {
+            //    graphics_->clear();
+            //    gocaParser_->reset();
+            //}
+            // ── Read Partition (Query / QueryList) ────────────────────────────
+            if (sendCb_) {
+                sendCb_(buildQueryReply());
             }
             break;
 
@@ -337,81 +345,86 @@ std::vector<uint8_t> DataStreamParser::buildQueryReply() const {
     const int rows = screen_.rows();
     const int cols = screen_.cols();
     const int sz   = screen_.size();
-    // For screens larger than 4095 cells, advertise 14-bit addressing support.
-    const uint8_t addrMode = (sz > 4095) ? 0x00 : 0x01;
 
     // AID byte: Query Reply (0x88)
     r.push_back(0x88);
 
-    // ── Query Reply (Summary) — 0x81 ────────────────────────────────────────
-    // MUST list every QR type present in this response (including itself).
-    // Length = 2 (len field) + 1 (type) + N listed codes.
-    // Types listed: Usable Area=0x80, Summary=0x81, Data Streams=0x84, Color=0x86, Highlight=0x87
-    r.push_back(0x00); r.push_back(0x08); // length = 8
-    r.push_back(0x81);                    // type: Summary
+    // ── Query Reply (Summary) — SF ID: 0x81, QR Type: 0x81 ──────────────────
+    // Lunghezza 10 byte: 2 (len) + 1 (SF ID) + 1 (QR Type) + 6 codici dichiarati
+    r.push_back(0x00); r.push_back(0x0A); // Length = 10
+    r.push_back(0x81);                    // SF ID: Query Reply
+    r.push_back(0x81);                    // QR Type: Summary
     r.push_back(0x80);                    // Usable Area
-    r.push_back(0x81);                    // Summary itself
+    r.push_back(0x81);                    // Summary
     r.push_back(0x84);                    // Data Streams (GOCA)
     r.push_back(0x86);                    // Color
     r.push_back(0x87);                    // Highlighting
+    r.push_back(0xA6);                    // Implicit Partition (Necessario per ISPF ADDPOP!)
 
-    // ── Query Reply (Usable Area) — 0x80 ────────────────────────────────────
-    // 2+1+1+1+2+2+1+2+2+1+1+2 = 18 bytes  (per IBM GA23-0059)
-    r.push_back(0x00); r.push_back(0x12);                           // length = 18
-    r.push_back(0x80);                                               // type: Usable Area
-    r.push_back(addrMode);                                           // addressing mode
-    r.push_back(0x00);                                               // flags (reserved)
+    // ── Query Reply (Usable Area) — SF ID: 0x81, QR Type: 0x80 ──────────────
+    r.push_back(0x00); r.push_back(0x13); // Length = 19
+    r.push_back(0x81);                    // SF ID: Query Reply
+    r.push_back(0x80);                    // QR Type: Usable Area
+    r.push_back(0x03);                    // Addressing flags: 12-bit & 14-bit
+    r.push_back(0x00);                    // Flags (reserved)
     r.push_back(static_cast<uint8_t>(cols >> 8));
-    r.push_back(static_cast<uint8_t>(cols & 0xFF));                 // usable cols
+    r.push_back(static_cast<uint8_t>(cols & 0xFF));                 // Usable cols (80)
     r.push_back(static_cast<uint8_t>(rows >> 8));
-    r.push_back(static_cast<uint8_t>(rows & 0xFF));                 // usable rows
-    r.push_back(0x01);                                               // units: mm
+    r.push_back(static_cast<uint8_t>(rows & 0xFF));                 // Usable rows (43)
+    r.push_back(0x01);                                               // Units: mm
     r.push_back(0x00); r.push_back(0x60);                           // Xr = 96 units/mm
     r.push_back(0x00); r.push_back(0x70);                           // Yr = 112 units/mm
     r.push_back(0x09);                                               // AW = 9 (cell width)
     r.push_back(0x0C);                                               // AH = 12 (cell height)
     r.push_back(static_cast<uint8_t>(sz >> 8));
-    r.push_back(static_cast<uint8_t>(sz & 0xFF));                   // buffer size
+    r.push_back(static_cast<uint8_t>(sz & 0xFF));                   // Buffer size
 
-    // ── Query Reply (Color) — 0x86 ───────────────────────────────────────────
-    // Reports 8 standard 3270 extended colors (GA23-0059 §6.7).
-    // Format: flags(1) + Np(1) + Np×[attr-code(1), device-code(1)]
-    // 2+1+1+1+8×2 = 21 bytes
-    r.push_back(0x00); r.push_back(0x15); // length = 21
-    r.push_back(0x86);                    // type: Color
-    r.push_back(0x00);                    // flags (bit 0: field color supported)
+    // ── Query Reply (Color) — SF ID: 0x81, QR Type: 0x86 ─────────────────────
+    r.push_back(0x00); r.push_back(0x16); // Length = 22
+    r.push_back(0x81);                    // SF ID: Query Reply
+    r.push_back(0x86);                    // QR Type: Color
+    r.push_back(0x00);                    // Flags
     r.push_back(0x08);                    // Np = 8 color pairs
-    r.push_back(0x00); r.push_back(0xF4); // default fg → green (0xF4)
-    r.push_back(0xF1); r.push_back(0xF1); // blue      → blue
-    r.push_back(0xF2); r.push_back(0xF2); // red       → red
-    r.push_back(0xF3); r.push_back(0xF3); // pink      → pink
-    r.push_back(0xF4); r.push_back(0xF4); // green     → green
-    r.push_back(0xF5); r.push_back(0xF5); // turquoise → turquoise
-    r.push_back(0xF6); r.push_back(0xF6); // yellow    → yellow
-    r.push_back(0xF7); r.push_back(0xF7); // white     → white
+    r.push_back(0x00); r.push_back(0xF4); // Default fg → Green
+    r.push_back(0xF1); r.push_back(0xF1); // Blue
+    r.push_back(0xF2); r.push_back(0xF2); // Red
+    r.push_back(0xF3); r.push_back(0xF3); // Pink
+    r.push_back(0xF4); r.push_back(0xF4); // Green
+    r.push_back(0xF5); r.push_back(0xF5); // Turquoise
+    r.push_back(0xF6); r.push_back(0xF6); // Yellow
+    r.push_back(0xF7); r.push_back(0xF7); // White
 
-    // ── Query Reply (Highlighting) — 0x87 ───────────────────────────────────
-    // Reports 5 extended highlighting attributes (GA23-0059 §6.8).
-    // Format: Np(1) + Np×[attr-code(1), device-code(1)]
-    // 2+1+1+5×2 = 14 bytes
-    r.push_back(0x00); r.push_back(0x0E); // length = 14
-    r.push_back(0x87);                    // type: Highlighting
+    // ── Query Reply (Highlighting) — SF ID: 0x81, QR Type: 0x87 ──────────────
+    r.push_back(0x00); r.push_back(0x0F); // Length = 15
+    r.push_back(0x81);                    // SF ID: Query Reply
+    r.push_back(0x87);                    // QR Type: Highlighting
     r.push_back(0x05);                    // Np = 5 highlight pairs
-    r.push_back(0x00); r.push_back(0x00); // default    → normal
-    r.push_back(0xF1); r.push_back(0xF1); // blink      → blink
-    r.push_back(0xF2); r.push_back(0xF2); // reverse    → reverse video
-    r.push_back(0xF4); r.push_back(0xF4); // underscore → underscore
-    r.push_back(0xF8); r.push_back(0xF8); // intensify  → intensify
+    r.push_back(0x00); r.push_back(0x00); // Default
+    r.push_back(0xF1); r.push_back(0xF1); // Blink
+    r.push_back(0xF2); r.push_back(0xF2); // Reverse
+    r.push_back(0xF4); r.push_back(0xF4); // Underscore
+    r.push_back(0xF8); r.push_back(0xF8); // Intensify
 
-    // ── Query Reply (Data Streams) — 0x84 ───────────────────────────────────
-    // Advertises GOCA (Graphics Object Content Architecture) support.
-    // Format: flags(1) + Np(1) + Np×stream-type(1)
-    // Length = 2 (len field) + 1 (type) + 1 (flags) + 1 (Np) + 1 (GOCA code) = 6
-    r.push_back(0x00); r.push_back(0x06); // length = 6
-    r.push_back(0x84);                    // type: Data Streams
-    r.push_back(0x00);                    // flags (reserved)
-    r.push_back(0x01);                    // Np = 1 supported stream type
-    r.push_back(0x02);                    // stream type 0x02 = GOCA
+    // ── Query Reply (Data Streams) — SF ID: 0x81, QR Type: 0x84 ──────────────
+    r.push_back(0x00); r.push_back(0x07); // Length = 7
+    r.push_back(0x81);                    // SF ID: Query Reply
+    r.push_back(0x84);                    // QR Type: Data Streams
+    r.push_back(0x00);                    // Flags
+    r.push_back(0x01);                    // Np = 1
+    r.push_back(0x02);                    // GOCA
+
+    // ── Query Reply (Implicit Partition) — SF ID: 0x81, QR Type: 0xA6 ────────
+    r.push_back(0x00); r.push_back(0x0D); // Length = 13
+    r.push_back(0x81);                    // SF ID: Query Reply
+    r.push_back(0xA6);                    // QR Type: Implicit Partition
+    r.push_back(0x00);                    // Flags
+    r.push_back(0x00);                    // Reserved
+    r.push_back(0x00); r.push_back(0x50); // Primary Width (80)
+    r.push_back(0x00); r.push_back(0x18); // Primary Height (24)
+    r.push_back(static_cast<uint8_t>(cols >> 8));
+    r.push_back(static_cast<uint8_t>(cols & 0xFF)); // Alternate Width (80)
+    r.push_back(static_cast<uint8_t>(rows >> 8));
+    r.push_back(static_cast<uint8_t>(rows & 0xFF)); // Alternate Height (43)
 
     return r;
 }

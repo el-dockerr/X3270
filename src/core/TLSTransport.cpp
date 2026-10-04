@@ -69,7 +69,21 @@ TLSTransport::TLSTransport() {
 }
 
 TLSTransport::~TLSTransport() {
-    disconnect();
+    // Mark as disconnected
+    connected_ = false;
+    if (ssl_) {
+        SSL_free(ssl_);
+        ssl_ = nullptr;
+    }
+    if (ctx_) {
+        SSL_CTX_free(ctx_);
+        ctx_ = nullptr;
+    }
+    if (sock_ >= 0) {
+        ::shutdown(sock_, SHUT_RDWR);
+        ::close(sock_);
+        sock_ = -1;
+    }
 }
 
 bool TLSTransport::connect(const std::string& host, uint16_t port,
@@ -77,8 +91,23 @@ bool TLSTransport::connect(const std::string& host, uint16_t port,
                            bool verifyCert,
                            const std::string& caBundle,
                            std::string& errorMsg) {
-    disconnect();
+    // Cleanup previous connection
+    connected_ = false;
+    if (ssl_) { 
+        SSL_free(ssl_); 
+        ssl_ = nullptr; 
+    }
+    if (ctx_) { 
+        SSL_CTX_free(ctx_); 
+        ctx_ = nullptr; 
+    }
+    if (sock_ >= 0) { 
+        ::shutdown(sock_, SHUT_RDWR); 
+        ::close(sock_); 
+        sock_ = -1; 
+    }
 
+    // Start the new connection 
     sock_ = tcpConnect(host, port, errorMsg);
     if (sock_ < 0) return false;
 
@@ -96,7 +125,7 @@ bool TLSTransport::connect(const std::string& host, uint16_t port,
         if (verifyCert) {
             SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, nullptr);
         } else {
-        // Disable certificate verification (equivalent to the -noverifycert flag)
+            // Disable certificate verification (equivalent to the -noverifycert flag)
             SSL_CTX_set_verify(ctx_, SSL_VERIFY_NONE, nullptr);
         }
 
@@ -151,17 +180,12 @@ bool TLSTransport::connect(const std::string& host, uint16_t port,
 
 void TLSTransport::disconnect() {
     connected_ = false;
-    if (ssl_) {
-        SSL_shutdown(ssl_);
-        SSL_free(ssl_);
-        ssl_ = nullptr;
-    }
-    if (ctx_) {
-        SSL_CTX_free(ctx_);
-        ctx_ = nullptr;
-    }
+    // To interrupt a blocking read safely from another thread,
+    // we simply "turn off" the socket.
+    // We do NOT call SSL_free() here, because the other thread is still inside SSL_read()!
     if (sock_ >= 0) {
-        ::close(sock_);
+        ::shutdown(sock_, SHUT_RDWR);
+        ::close(sock_); // Forcefully close the descriptor
         sock_ = -1;
     }
 }

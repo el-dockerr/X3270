@@ -21,7 +21,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 APP_NAME="DX3270"
-VERSION="1.7.5"
+VERSION="1.7.6"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 ARCH="x86_64"
 DMG_NAME="${APP_NAME}-${VERSION}-build${BUILD_NUMBER}-Intel"
@@ -104,10 +104,27 @@ if [[ "${BUILT_ARCH}" != *"x86_64"* ]]; then
 fi
 echo "==> Architecture verified: ${BUILT_ARCH}"
 
+# ── 2b. Strip local symbols ───────────────────────────────────────────────────
+echo "==> Stripping local symbols to reduce size (x86_64)"
+if [ -f "${BINARY}" ]; then
+    strip -x "${BINARY}"
+fi
+if [ -f "${BUILD_DIR}/dx3270_headless" ]; then
+    strip -x "${BUILD_DIR}/dx3270_headless"
+fi
+
 # ── 3. Stage the DMG contents ─────────────────────────────────────────────────
 echo ""
 echo "==> Staging DMG contents"
 cp -R "${APP_PATH}" "${STAGING_DIR}/${APP_NAME}.app"
+
+HEADLESS_BIN="${BUILD_DIR}/dx3270_headless"
+if [ -f "${HEADLESS_BIN}" ]; then
+    echo "==> Including dx3270_headless in the App Bundle and the DMG (x86_64)"
+    cp "${HEADLESS_BIN}" "${STAGING_DIR}/${APP_NAME}.app/Contents/MacOS/"
+    cp "${HEADLESS_BIN}" "${STAGING_DIR}/dx3270_headless"
+fi
+
 ln -s /Applications "${STAGING_DIR}/Applications"
 
 # ── 3b. Code-sign the *whole* app bundle ──────────────────────────────────────

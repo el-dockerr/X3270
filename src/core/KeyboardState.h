@@ -1,6 +1,7 @@
 #pragma once
 #include "ScreenBuffer.h"
 #include "EbcdicCodec.h"
+#include "MacroRecorder.h"
 #include <cstdint>
 #include <vector>
 #include <functional>
@@ -58,7 +59,7 @@ public:
 
     // ── Key handlers (called by UI on keyDown) ────────────────────────────────
     // Returns false if the key was rejected (keyboard locked / protected field)
-    bool handleChar(uint8_t asciiChar);   // printable character input
+    bool handleChar(uint16_t unicodeChar);   // printable character input
     bool handleEbcdicChar(uint8_t ebcdic); // raw EBCDIC input (used for pasting)
     bool handleTab(bool backward = false);
     bool handleEnter();
@@ -76,6 +77,8 @@ public:
     bool handleCursorLeft();
     bool handleCursorRight();
     bool handleReset();
+    // ── Macro Recorder ─────────────────────────────────────────────────────────
+    void setMacroRecorder(MacroRecorder* recorder) { recorder_ = recorder; }
 
 private:
     void sendAID(uint8_t aidCode, bool includeModifiedFields);
@@ -93,6 +96,8 @@ private:
     LockReason          lockReason_  { LockReason::Connecting };
     bool                insertMode_  { false };
     SendRecordCallback  sendCb_;
+    // Macro recorder instance (not owned)
+    MacroRecorder* recorder_{nullptr};
 };
 
 } // namespace x3270
