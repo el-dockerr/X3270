@@ -6,6 +6,7 @@
 @implementation ConnectionWindowController {
     NSComboBox     *_hostCombo;
     NSTextField    *_portField;
+    NSTextField    *_luField;
     NSButton       *_sslCheckbox;
     // Below existing variables like _sslCheckbox
     NSButton       *_verifyCertCheckbox;
@@ -23,7 +24,7 @@
 
 - (instancetype)init {
     NSWindow *win = [[NSWindow alloc]
-                     initWithContentRect:NSMakeRect(0, 0, 420, 444)
+                     initWithContentRect:NSMakeRect(0, 0, 420, 478)
                                styleMask:NSWindowStyleMaskTitled
                                         |NSWindowStyleMaskClosable
                                         |NSWindowStyleMaskMiniaturizable
@@ -47,7 +48,7 @@
     CGFloat margin = 20;
     CGFloat hdrW = 380;
     CGFloat labelW = 100, fieldW = 240, rowH = 24, gap = 10;
-    __block CGFloat curY = 304;
+    __block CGFloat curY = 338;
 
     // ── Header: app name, version and author ──────────────────────────────────
     NSString *version = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"1.7.5";
@@ -55,7 +56,7 @@
     NSTextField *appName = [NSTextField labelWithString:@"DX3270"];
     appName.font = [NSFont boldSystemFontOfSize:16];
     appName.alignment = NSTextAlignmentCenter;
-    appName.frame = NSMakeRect(margin, 408, hdrW, 24);
+    appName.frame = NSMakeRect(margin, 442, hdrW, 24);
     [cv addSubview:appName];
 
     NSTextField *appSubtitle = [NSTextField labelWithString:
@@ -63,7 +64,7 @@
     appSubtitle.font = [NSFont systemFontOfSize:11];
     appSubtitle.textColor = [NSColor secondaryLabelColor];
     appSubtitle.alignment = NSTextAlignmentCenter;
-    appSubtitle.frame = NSMakeRect(margin, 388, hdrW, 16);
+    appSubtitle.frame = NSMakeRect(margin, 422, hdrW, 16);
     [cv addSubview:appSubtitle];
 
     NSMutableAttributedString *linkTitle = [[NSMutableAttributedString alloc]
@@ -72,7 +73,7 @@
                 NSFontAttributeName: [NSFont systemFontOfSize:11],
                 NSForegroundColorAttributeName: [NSColor linkColor],
             }];
-    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin, 366, hdrW, 18)];
+    NSButton *linkBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin, 400, hdrW, 18)];
     [linkBtn setAttributedTitle:linkTitle];
     linkBtn.buttonType = NSButtonTypeMomentaryLight;
     linkBtn.bordered = NO;
@@ -88,7 +89,7 @@
                 NSFontAttributeName: [NSFont systemFontOfSize:11],
                 NSForegroundColorAttributeName: [NSColor systemPinkColor],
             }];
-    _donateBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin, 346, hdrW, 16)];
+    _donateBtn = [[NSButton alloc] initWithFrame:NSMakeRect(margin, 380, hdrW, 16)];
     [_donateBtn setAttributedTitle:donateTitle];
     _donateBtn.buttonType = NSButtonTypeMomentaryLight;
     _donateBtn.bordered = NO;
@@ -97,7 +98,7 @@
     _donateBtn.alignment = NSTextAlignmentCenter;
     [cv addSubview:_donateBtn];
 
-    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 332, hdrW, 1)];
+    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(margin, 366, hdrW, 1)];
     separator.boxType = NSBoxSeparator;
     [cv addSubview:separator];
 
@@ -135,6 +136,11 @@
     _portField = [NSTextField textFieldWithString:@"23"];
     _portField.placeholderString = @"23";
     addRow(@"Port:", _portField);
+
+    // LU name (optional, TN3270 only)
+    _luField = [NSTextField textFieldWithString:@""];
+    _luField.placeholderString = @"(optional) e.g. TCPLU001";
+    addRow(@"LU Name:", _luField);
 
     // SSL
     _sslCheckbox = [NSButton checkboxWithTitle:@"Use SSL/TLS (port 992)"
@@ -224,6 +230,7 @@
 
 - (void)protocolChanged:(id)sender {
     BOOL is5250 = (_protocolPopup.indexOfSelectedItem == 1);
+    _luField.enabled = !is5250;
     if (is5250) {
         // 5250 only supports Standard (24x80) and Wide (27x132)
         [_modelPopup removeAllItems];
@@ -311,6 +318,22 @@
         return;
     }
 
+    BOOL is5250 = (_protocolPopup.indexOfSelectedItem == 1);
+
+    NSString *luName = is5250 ? @"" : [[_luField.stringValue
+        stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]
+        uppercaseString];
+    if (luName.length > 0) {
+        NSCharacterSet *luChars = [NSCharacterSet characterSetWithCharactersInString:
+            @"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$"];
+        if (luName.length > 8 ||
+            [luName rangeOfCharacterFromSet:luChars.invertedSet].location != NSNotFound) {
+            _statusLabel.stringValue = @"LU name must be 1-8 characters (A-Z, 0-9, @#$).";
+            return;
+        }
+    }
+    _luField.stringValue = luName;
+
     BOOL useSSL = _sslCheckbox.state == NSControlStateValueOn;
     BOOL verifyCert = _verifyCertCheckbox.state == NSControlStateValueOn; // <--- New line
     NSString *caBundle = useSSL ? _caField.stringValue : @"";
@@ -325,7 +348,6 @@
 
     // Map screen model selection (5250 uses simpler mapping)
     x3270::TerminalModel model;
-    BOOL is5250 = (_protocolPopup.indexOfSelectedItem == 1);
     if (is5250) {
         // 5250 model popup: 0=Standard(24x80), 1=Wide(27x132)
         model = (_modelPopup.indexOfSelectedItem == 1)
@@ -357,7 +379,8 @@
                                               caBundle:caBundle
                                              codePage:cp
                                                 model:model
-                                             protocol:protocol];
+                                             protocol:protocol
+                                               luName:luName];
     [_terminals addObject:twc];
     [twc showWindow:nil];
 
@@ -427,6 +450,7 @@ static const NSInteger  kHistoryMax = 20;
         _sslCheckbox.state = ssl ? NSControlStateValueOn : NSControlStateValueOff;
         _caField.hidden = !ssl;
         _caField.stringValue = last[@"ca"] ?: @"";
+        _luField.stringValue = last[@"lu"] ?: @"";
         NSInteger cp = [last[@"codepage"] integerValue];
         if (cp >= 0 && cp < _codePagePopup.numberOfItems)
             [_codePagePopup selectItemAtIndex:cp];
@@ -465,6 +489,7 @@ static const NSInteger  kHistoryMax = 20;
         @"model":    @(_modelPopup.indexOfSelectedItem),
         @"protocol": @(_protocolPopup.indexOfSelectedItem),
         @"verifyCert": @(_verifyCertCheckbox.state == NSControlStateValueOn),
+        @"lu":       _luField.stringValue ?: @"",
     };
 
     // Remove existing entry for same host:port so it moves to top
@@ -500,6 +525,7 @@ static const NSInteger  kHistoryMax = 20;
     _sslCheckbox.state = ssl ? NSControlStateValueOn : NSControlStateValueOff;
     _caField.hidden = !ssl;
     _caField.stringValue = entry[@"ca"] ?: @"";
+    _luField.stringValue = entry[@"lu"] ?: @"";
     NSInteger cp = [entry[@"codepage"] integerValue];
     if (cp >= 0 && cp < _codePagePopup.numberOfItems)
         [_codePagePopup selectItemAtIndex:cp];

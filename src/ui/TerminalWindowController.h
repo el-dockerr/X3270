@@ -15,7 +15,8 @@
                     caBundle:(NSString*)caBundle
                     codePage:(x3270::CodePage)codePage
                        model:(x3270::TerminalModel)model
-                    protocol:(x3270::TerminalProtocol)protocol;
+                    protocol:(x3270::TerminalProtocol)protocol
+                      luName:(NSString*)luName;
 
 /// Callbacks for ConnectionWindowController to observe results
 @property (nonatomic, copy) void(^onConnected)(void);

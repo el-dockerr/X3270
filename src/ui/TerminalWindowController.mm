@@ -44,6 +44,7 @@
     x3270::CodePage       _codePage;
     x3270::TerminalModel  _model;
     x3270::TerminalProtocol _protocol;
+    NSString  *_luName;
 }
 
 - (instancetype)initWithHost:(NSString*)host
@@ -53,7 +54,8 @@
                     caBundle:(NSString*)caBundle
                     codePage:(x3270::CodePage)codePage
                        model:(x3270::TerminalModel)model
-                    protocol:(x3270::TerminalProtocol)protocol {
+                    protocol:(x3270::TerminalProtocol)protocol
+                      luName:(NSString*)luName {
     NSString *protoLabel = (protocol == x3270::TerminalProtocol::TN5250) ? @" [5250]" : @"";
     NSWindow *win = [[NSWindow alloc]
                      initWithContentRect:NSMakeRect(0, 0, 640, 420)
@@ -77,6 +79,7 @@
         _codePage = codePage;
         _model    = model;
         _protocol = protocol;
+        _luName   = [luName copy];
 
         [self buildEngineObjects];
         [self buildUI];
@@ -193,6 +196,7 @@
         _graphics = std::make_unique<x3270::GraphicsBuffer>();
         auto* session3270 = new x3270::TN3270Session();
         session3270->setModel(_model);
+        if (_luName.length > 0) session3270->setLuName(_luName.UTF8String);
         _session.reset(session3270);
 
         _parser3270 = std::make_unique<x3270::DataStreamParser>(*_screen, *_codec);
@@ -256,6 +260,14 @@
                 if (s->_kbd5250)
                     s->_kbd5250->lock(x3270::KeyboardState5250::LockReason::System);
                 [s->_termView screenDidUpdate];
+                if (s->_protocol == x3270::TerminalProtocol::TN3270) {
+                    auto* s3270 = static_cast<x3270::TN3270Session*>(s->_session.get());
+                    NSString *lu = s3270->connectedLu().empty() ? s->_luName
+                        : [NSString stringWithUTF8String:s3270->connectedLu().c_str()];
+                    if (lu.length > 0)
+                        s.window.title = [NSString stringWithFormat:@"%@:%d [%@] — DX3270",
+                                          s->_host, s->_port, lu];
+                }
                 if (s.onConnected) s.onConnected();
             }
         });

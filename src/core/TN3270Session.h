@@ -82,6 +82,15 @@ public:
     /// Determines the DEVICE-TYPE string sent during TN3270E negotiation.
     void setModel(TerminalModel m) { model_ = m; }
 
+    /// Request a specific LU (device name) before calling connect().
+    /// Sent as TN3270E DEVICE-TYPE REQUEST ... CONNECT <lu>, or as
+    /// TERMINAL-TYPE IS <type>@<lu> in classic TN3270 (RFC 1646).
+    void setLuName(const std::string& lu) { luName_ = lu; }
+
+    /// LU name the server assigned (from DEVICE-TYPE IS ... CONNECT <lu>);
+    /// empty in classic TN3270 mode.
+    const std::string& connectedLu() const { return connectedLu_; }
+
     /// Connect and start Telnet negotiation.  Blocks until negotiation is
     /// complete or an error occurs (intended to be called from a background thread).
     bool connect(const std::string& host, uint16_t port,
@@ -134,6 +143,8 @@ private:
     State              state_       { State::Disconnected };
     TelnetState        telnetState_ { TelnetState::Normal };
     TerminalModel      model_       { TerminalModel::Model2 };
+    std::string        luName_;
+    std::string        connectedLu_;
 
     DataCallback      dataCb_;
     ConnectedCallback connectedCb_;

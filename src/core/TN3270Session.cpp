@@ -23,6 +23,7 @@ bool TN3270Session::connect(const std::string& host, uint16_t port,
     willTermType_ = doTermType_ = tn3270eMode_ = tn3270eOffered_ = false;
     sentWillBinary_ = sentDoBinary_ = sentWillEOR_ = sentDoEOR_ = sentWillTermType_ = false;
     sentWillTN3270E_ = sentDoTN3270E_ = false;
+    connectedLu_.clear();
 
     // RFC 2355: offer TN3270E (both directions simultaneously) and hint at
     // terminal-type capability.  We deliberately do NOT proactively offer
@@ -218,6 +219,11 @@ void TN3270Session::processIacCommand(uint8_t cmd, uint8_t opt) {
             const char* dtype = modelTypeName(model_);
             for (const char* p = dtype; *p; ++p)
                 payload.push_back(static_cast<uint8_t>(*p));
+            if (!luName_.empty()) {
+                // RFC 2355: DEVICE-TYPE REQUEST <type> CONNECT <resource-name>
+                payload.push_back(TN3270E_CONNECT);
+                payload.insert(payload.end(), luName_.begin(), luName_.end());
+            }
             sendSb(payload);
         } else if (cmd == WONT || cmd == DONT) {
             // Server rejected TN3270E — fall back to traditional TN3270
@@ -270,6 +276,13 @@ void TN3270Session::handleTN3270eSb(const std::vector<uint8_t>& sb) {
     if (func == TN3270E_DEVICE_TYPE && sb.size() >= 3) {
         uint8_t sub = sb[2];
         if (sub == TN3270E_IS) {
+            // DEVICE-TYPE IS <type> [CONNECT <lu>] — remember the assigned LU
+            for (size_t i = 3; i < sb.size(); ++i) {
+                if (sb[i] == TN3270E_CONNECT) {
+                    connectedLu_.assign(sb.begin() + i + 1, sb.end());
+                    break;
+                }
+            }
             // Server confirmed device type — now negotiate functions
             std::vector<uint8_t> payload = {
                 OPT_TN3270E,
@@ -277,6 +290,20 @@ void TN3270Session::handleTN3270eSb(const std::vector<uint8_t>& sb) {
                 // No special functions for Phase 1
             };
             sendSb(payload);
+        } else if (sub == TN3270E_REJECT && !luName_.empty()) {
+            // An explicitly requested LU was refused — report it rather than
+            // silently falling back to a pool LU.
+            static const char* const reasons[] = {
+                "CONN-PARTNER", "DEVICE-IN-USE", "INV-ASSOCIATE", "INV-NAME",
+                "INV-DEVICE-TYPE", "TYPE-NAME-ERROR", "UNKNOWN-ERROR",
+                "UNSUPPORTED-REQ",
+            };
+            std::string why = "unknown reason";
+            if (sb.size() >= 5 && sb[3] == TN3270E_REASON && sb[4] < 8)
+                why = reasons[sb[4]];
+            if (errorCb_)
+                errorCb_("Host rejected LU " + luName_ + " (" + why + ")");
+            disconnect();
         } else if (sub == TN3270E_REJECT) {
             // Server rejected our device type — fall back to classic TN3270
             tn3270eOffered_ = false;
@@ -309,6 +336,11 @@ void TN3270Session::sendTerminalType() {
     std::vector<uint8_t> payload = { OPT_TERMINAL_TYPE, 0x00 /* IS */ };
     for (const char* p = term; *p; ++p)
         payload.push_back(static_cast<uint8_t>(*p));
+    if (!luName_.empty()) {
+        // RFC 1646: request a specific device name as <type>@<lu>
+        payload.push_back('@');
+        payload.insert(payload.end(), luName_.begin(), luName_.end());
+    }
     sendSb(payload);
 }
 
