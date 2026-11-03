@@ -16,6 +16,7 @@
 #include "GraphicsBuffer.h"
 #include "EbcdicCodec.h"
 #include "TerminalProtocol.h"
+#include "IndFileEngine.h"
 #include <memory>
 #include <thread>
 #include <atomic>
@@ -41,7 +42,7 @@ static NSString * const kDX3270BroadcastOOBNotification  = @"DX3270BroadcastOOBN
     std::shared_ptr<x3270::DataStream5250Parser>  _parser5250;
     std::shared_ptr<x3270::KeyboardState>         _kbd3270;
     std::shared_ptr<x3270::KeyboardState5250>     _kbd5250;
-    
+    std::shared_ptr<x3270::IndFileEngine>         _indFileEngine;
     std::shared_ptr<x3270::ITerminalSession>      _session;
     
     std::thread _networkThread;
@@ -219,6 +220,9 @@ static NSString * const kDX3270BroadcastOOBNotification  = @"DX3270BroadcastOOBN
     BOOL brackets = [[NSUserDefaults standardUserDefaults] boolForKey:kPrefHerculesBrackets];
     _codec->setHerculesBrackets(brackets);
     
+    // Initialize the IndFileEngine with the active EBCDIC codec
+    _indFileEngine = std::make_shared<x3270::IndFileEngine>(*_codec);
+
     if (!_debugWC) {
         _debugWC = [[DebugWindowController alloc] init];
     }
@@ -254,12 +258,12 @@ static NSString * const kDX3270BroadcastOOBNotification  = @"DX3270BroadcastOOBN
             return session->sendRecord(record);
         });
         
-        _session->setDataCallback([weakSelf, currentId, parser, kbd](const std::vector<uint8_t> &record) {
+        _session->setDataCallback([weakSelf, currentId, parser, session](const std::vector<uint8_t> &record) {
             std::vector<uint8_t> recCopy = record;
             dispatch_async(dispatch_get_main_queue(), ^{
                 __strong auto s = weakSelf; 
-                if (!s || s->_isClosing || s->_connectionId != currentId) return; // Ghost filter
-                if (recCopy.size() >= 10 && (recCopy[9] == 0x01 || recCopy[9] == 0x03)) kbd->unlock();
+                if (!s || s->_isClosing || s->_connectionId != currentId) return;
+                
                 parser->processRecord(recCopy);
                 [s->_termView screenDidUpdate];
             });
@@ -303,14 +307,22 @@ static NSString * const kDX3270BroadcastOOBNotification  = @"DX3270BroadcastOOBN
             dispatch_async(dispatch_get_main_queue(), ^{
                 __strong auto s = weakSelf; 
                 if (!s || s->_isClosing || s->_connectionId != currentId) return; // Ghost filter
+                
                 auto *sess = static_cast<x3270::TN3270Session *>(session.get());
                 const std::vector<uint8_t> *payload = &recCopy;
                 std::vector<uint8_t> stripped;
+                
                 if (sess->tn3270eActive() && recCopy.size() >= 5) {
                     if (recCopy[0] != 0x00) return;
                     stripped.assign(recCopy.begin() + 5, recCopy.end());
                     payload = &stripped;
                 }
+                
+                // Intercept IND$FILE protocol packets before passing data to the screen buffer
+                if (s->_indFileEngine && s->_indFileEngine->isActive() && s->_indFileEngine->processHostData(*payload)) {
+                    return; // Intercepted, do not display on terminal screen!
+                }
+
                 parser->processRecord(*payload);
                 [s->_termView screenDidUpdate];
             });
@@ -349,6 +361,29 @@ static NSString * const kDX3270BroadcastOOBNotification  = @"DX3270BroadcastOOBN
             [s->_debugWC appendBytes:dataCopy.data() length:dataCopy.size() isOutgoing:outgoing ? YES : NO];
         });
     });
+
+    // Configure IND$FILE callbacks
+    auto sessPtr = _session;
+    _indFileEngine->setCallbacks(
+        [sessPtr](const std::vector<uint8_t>& data) { 
+            return sessPtr->sendRecord(data); // Send WSF response packets back to the host
+        },
+        [](size_t bytes) { 
+            // TODO: Update transfer progress bar in UI
+        },
+        [weakSelf](bool success, const std::string& msg) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSLog(@"[IND$FILE] Transfer %s: %s", success ? "Complete" : "Failed", msg.c_str());
+                if (!success && weakSelf) {
+                    NSAlert *alert = [[NSAlert alloc] init];
+                    alert.messageText = @"IND$FILE Transfer Failed";
+                    alert.informativeText = [NSString stringWithUTF8String:msg.c_str()];
+                    alert.alertStyle = NSAlertStyleWarning;
+                    [alert runModal];
+                }
+            });
+        }
+    );
 }
 
 - (void)startNetworkConnection {
@@ -628,5 +663,25 @@ static NSString * const kDX3270BroadcastOOBNotification  = @"DX3270BroadcastOOBN
     } completionHandler:^{
         [self->_termView setNeedsDisplay:YES];
     }];
+}
+
+
+- (void)startIndFileGetWithHostFile:(NSString *)hostFile
+                       localFilePath:(NSString *)localPath
+                            isBinary:(BOOL)isBinary {
+    if (!_indFileEngine || _indFileEngine->isActive()) return;
+
+    x3270::IndFileMode mode = isBinary ? x3270::IndFileMode::Binary : x3270::IndFileMode::Ascii;
+
+    if (!_indFileEngine->startTransfer(x3270::IndFileDirection::Get, mode, [hostFile UTF8String], [localPath UTF8String])) {
+        return;
+    }
+
+    // Costruisce il comando TSO IND$FILE standard
+    NSString *modeStr = isBinary ? @"BINARY" : @"ASCII CRLF";
+    NSString *cmd = [NSString stringWithFormat:@"IND$FILE GET '%@' %@", hostFile, modeStr];
+
+    // Invia il comando al mainframe come se fosse stato digitato dall'utente
+    [self executeISPFCommandLocally:cmd];
 }
 @end
