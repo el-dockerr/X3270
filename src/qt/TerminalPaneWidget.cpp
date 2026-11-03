@@ -1,4 +1,5 @@
 #include "TerminalPaneWidget.h"
+#include "IndFileEngine.h"
 #include "OOBPopoverWidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -21,6 +22,7 @@ TerminalPaneWidget::TerminalPaneWidget(const ConnectionSettings &settings, QWidg
     m_session->setModel(settings.model);
     m_parser = std::make_shared<x3270::DataStreamParser>(*m_screen, *m_codec);
     m_kbd = std::make_shared<x3270::KeyboardState>(*m_screen, *m_codec);
+    m_indFileEngine = std::make_shared<x3270::IndFileEngine>(*m_codec);
 
     m_terminal = new TerminalWidget(this);
     m_terminal->setScreenBuffer(m_screen.get(), m_codec.get(), m_kbd.get());
@@ -187,4 +189,24 @@ void TerminalPaneWidget::reconnectSession() {
 
     // 4. Rilancia il thread e il loop di rete!
     startSession();
+}
+
+void TerminalPaneWidget::startIndFileGet(const QString &hostFile, const QString &localPath, bool isBinary) {
+    if (!m_indFileEngine || m_indFileEngine->isActive()) return;
+
+    x3270::IndFileMode mode = isBinary ? x3270::IndFileMode::Binary : x3270::IndFileMode::Ascii;
+
+    if (!m_indFileEngine->startTransfer(x3270::IndFileDirection::Get, mode, hostFile.toStdString(), localPath.toStdString())) {
+        return;
+    }
+
+    QString modeStr = isBinary ? "BINARY" : "ASCII CRLF";
+    QString cmd = QString("IND$FILE GET '%1' %2").arg(hostFile, modeStr);
+
+    if (m_kbd) {
+        for (QChar c : cmd) {
+            m_kbd->handleChar(c.unicode());
+        }
+        m_kbd->handleEnter();
+    }
 }

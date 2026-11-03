@@ -49,6 +49,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (IBAction)toggleTimeMachine:(id)sender;
 - (IBAction)openDebugWindow:(id)sender;
 - (IBAction)toggleCommandDock:(id)sender;
+
+
+// Initiates an IND$FILE GET transfer from the host to the local machine.
+- (void)startIndFileGetWithHostFile:(NSString *)hostFile
+                       localFilePath:(NSString *)localPath
+                            isBinary:(BOOL)isBinary;
 @end
 
 NS_ASSUME_NONNULL_END

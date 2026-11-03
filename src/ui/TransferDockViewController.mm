@@ -1,4 +1,5 @@
 #import "TransferDockViewController.h"
+#import "TerminalViewController.h"
 #import <netdb.h>
 #import <sys/socket.h>
 #import <Security/Security.h>
@@ -98,6 +99,7 @@
     [stack addArrangedSubview:[self createLabel:@"Protocol / Engine:"]];
     self.toolPopup = [[NSPopUpButton alloc] init];
     [self.toolPopup addItemsWithTitles:@[
+        @"IND$FILE (3270 Native Stream)",
         @"CoZ SFTP (SSH + EBCDIC)",
         @"Standard SFTP (USS / Binary)",
         @"FTP / FTPS (IBM z/OS FTP)",
@@ -490,11 +492,9 @@
     BOOL useKey = (self.useKeyCheckbox.state == NSControlStateValueOn);
     
     BOOL isUpload = (self.directionPopup.indexOfSelectedItem == 1);
-
     if (user.length > 0) {
         [[NSUserDefaults standardUserDefaults] setObject:user forKey:@"DX3270_TransferUser"];
     }
-
     if (localTarget.length == 0 && !isUpload && remoteTarget.length > 0) {
         NSString *safeName = [[remoteTarget componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"'()\\/"]] componentsJoinedByString:@"_"];
         safeName = [safeName stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"_"]];
@@ -506,32 +506,53 @@
             self.localPathField.stringValue = localTarget;
         });
     }
-
     if (remoteTarget.length == 0 || localTarget.length == 0) {
         NSBeep();
         [self logMessage:@"[ERROR] Please specify the z/OS target. For uploads, a local file is also required."];
         return;
     }
 
+    NSInteger protocolIndex = self.toolPopup.indexOfSelectedItem;
+    BOOL isBinary           = (self.modePopup.indexOfSelectedItem == 1);
+    NSString *host          = self.currentHost ?: @"localhost";
+
+    // =========================================================================
+    // 👉 1. IND$FILE (Protocol Index 0): Direct handling without NSTask
+    // =========================================================================
+    if (protocolIndex == 0) {
+        // Take the active TerminalViewController from the parent (Workspace)
+        TerminalViewController *term = [self findActiveTerminalViewController];
+               
+        if (term) {
+            [self logMessage:[NSString stringWithFormat:@"[START] IND$FILE %@ su %@", isUpload ? @"Upload" : @"Download", host]];
+            [term startIndFileGetWithHostFile:remoteTarget
+                                localFilePath:localTarget
+                                     isBinary:isBinary];
+        } else {
+            [self logMessage:@"[ERROR] No active terminal found for IND$FILE."];
+        }
+        return; // Exit directly, no need to execute the expect/curl below!
+    }
+
+    // =========================================================================
+    // 2. Other External Protocols (Scaled Indices +1)
+    // =========================================================================
     self.spinner.alphaValue = 1.0; 
     [self.spinner startAnimation:nil];
     self.actionButton.enabled = NO;
 
-    NSInteger protocolIndex = self.toolPopup.indexOfSelectedItem;
-    BOOL isBinary           = (self.modePopup.indexOfSelectedItem == 1);
-    NSString *host          = self.currentHost ?: @"localhost";
-    NSString *targetHost    = (user.length > 0) ? [NSString stringWithFormat:@"%@@%@", user, host] : host;
-
+    NSString *targetHost = (user.length > 0) ? [NSString stringWithFormat:@"%@@%@", user, host] : host;
     [self logMessage:[NSString stringWithFormat:@"[START] %@ %@ on host %@", 
-                      self.toolPopup.titleOfSelectedItem, 
-                      isUpload ? @"Upload" : @"Download", host]];
+                       self.toolPopup.titleOfSelectedItem, 
+                       isUpload ? @"Upload" : @"Download", host]];
 
     self.currentTask = [[NSTask alloc] init];
     NSPipe *pipe = [NSPipe pipe];
     self.currentTask.standardOutput = pipe;
     self.currentTask.standardError = pipe;
 
-    if (protocolIndex == 0 || protocolIndex == 1) {
+    // Index 1 = CoZ SFTP, Index 2 = Standard SFTP
+    if (protocolIndex == 1 || protocolIndex == 2) {
         self.currentTask.launchPath = @"/usr/bin/expect";
         NSMutableDictionary *env = [[NSProcessInfo processInfo].environment mutableCopy];
         if (password.length > 0 && !useKey) env[@"SFTP_PASS"] = password;
@@ -543,7 +564,6 @@
         
         NSMutableString *script = [NSMutableString string];
         
-        // Flag -o BatchMode=yes se si usa la chiave SSH, così non chiede password
         if (useKey) {
             [script appendFormat:@"spawn sftp -o BatchMode=yes %@\n", targetHost];
         } else {
@@ -569,7 +589,8 @@
         [script appendString:@"  \"sftp>\" { }\n"];
         [script appendString:@"}\n"];
 
-        if (protocolIndex == 0) { 
+        // CoZ SFTP (Ex Index 0, now Index 1)
+        if (protocolIndex == 1) { 
             if (isBinary) {
                 [script appendString:@"send \"ls /+mode=binary\\r\"\n"];
             } else {
@@ -582,7 +603,7 @@
             } else {
                 [script appendFormat:@"send \"get //%@ \\\"%@\\\"\\r\"\n", remoteTarget, localTarget];
             }
-        } else { 
+        } else { // Standard SFTP (Ex Index 1, now Index 2)
             if (isUpload) {
                 [script appendFormat:@"send \"put \\\"%@\\\" \\\"%@\\\"\\r\"\n", localTarget, remoteTarget];
             } else {
@@ -597,8 +618,7 @@
         NSData *inputData = [script dataUsingEncoding:NSUTF8StringEncoding];
         [inputPipe.fileHandleForWriting writeData:inputData];
         [inputPipe.fileHandleForWriting closeFile];
-
-    } else if (protocolIndex == 2) {
+    } else if (protocolIndex == 3) { // FTP (Ex Index 2, now Index 3)
         self.currentTask.launchPath = @"/usr/bin/curl";
         NSMutableArray *args = [NSMutableArray arrayWithObject:@"-sS"];
         if (user.length > 0 && password.length > 0 && !useKey) {
@@ -614,8 +634,7 @@
         if (!isBinary) [args addObject:@"--use-ascii"];
         [args addObject:url];
         self.currentTask.arguments = args;
-
-    } else if (protocolIndex == 3) {
+    } else if (protocolIndex == 4) { // z/OSMF (Ex Index 3, now Index 4)
         self.currentTask.launchPath = @"/usr/bin/curl";
         NSMutableArray *args = [NSMutableArray arrayWithObject:@"-sS"];
         if (user.length > 0 && password.length > 0 && !useKey) {
@@ -631,8 +650,7 @@
         [args addObjectsFromArray:@[@"-H", isBinary ? @"X-IBM-Data-Type: binary" : @"X-IBM-Data-Type: text"]];
         [args addObject:url];
         self.currentTask.arguments = args;
-
-    } else if (protocolIndex == 4) {
+    } else if (protocolIndex == 5) { // Zowe (Ex Index 4, now Index 5)
         self.currentTask.launchPath = self.zowePath ?: @"/opt/homebrew/bin/zowe";
         NSMutableArray *args = [NSMutableArray array];
         if (isUpload) {
@@ -662,7 +680,6 @@
                 strongSelf.actionButton.enabled = YES;
                 [strongSelf logMessage:[NSString stringWithFormat:@"[FINISHED] Exit code: %d", task.terminationStatus]];
                 
-                // Salva nel Keychain se il trasferimento ha avuto successo ed è stata usata una password
                 if (task.terminationStatus == 0 && user.length > 0 && password.length > 0 && !useKey) {
                     [strongSelf savePasswordToKeychain:password forUser:user];
                 }
@@ -677,6 +694,30 @@
         [self.spinner stopAnimation:nil];
         self.actionButton.enabled = YES;
     }
+}
+
+
+- (TerminalViewController *)findActiveTerminalViewController {
+    // 1. Risale la catena dei parent (attraverso NSSplitViewController fino a WorkspaceViewController)
+    NSViewController *parent = self.parentViewController;
+    while (parent) {
+        if ([parent respondsToSelector:@selector(activeTerminal)]) {
+            TerminalViewController *term = [parent performSelector:@selector(activeTerminal)];
+            if (term) return term;
+        }
+        parent = parent.parentViewController;
+    }
+
+    // 2. Fallback: ricerca tramite il WindowController (WorkspaceWindowController / TerminalWindowController)
+    NSWindowController *wc = self.view.window.windowController;
+    if ([wc respondsToSelector:@selector(activeTerminalTab)]) {
+        return [wc performSelector:@selector(activeTerminalTab)];
+    }
+    if ([wc respondsToSelector:@selector(terminalVC)]) {
+        return [wc performSelector:@selector(terminalVC)];
+    }
+
+    return nil;
 }
 
 @end

@@ -7,6 +7,7 @@
 #include <memory>
 #include <atomic>
 
+#include "IndFileEngine.h"
 #include "CommandDockWidget.h"
 #include "TerminalWidget.h"
 #include "ConnectionDialog.h"
@@ -34,6 +35,7 @@ public:
     void executeOobCommand(const QString &cmd);
     void reconnectSession();
 
+    void startIndFileGet(const QString &hostFile, const QString &localPath, bool isBinary);
 signals:
     void paneFocused(TerminalPaneWidget *pane);
     void splitRequested(TerminalPaneWidget *pane, Qt::Orientation orientation);
@@ -61,6 +63,7 @@ private:
     std::shared_ptr<x3270::TN3270Session> m_session;
     std::shared_ptr<x3270::DataStreamParser> m_parser;
     std::shared_ptr<x3270::KeyboardState> m_kbd;
+    std::shared_ptr<x3270::IndFileEngine> m_indFileEngine;
 
     std::thread m_networkThread;
     std::atomic<bool> m_isClosing{false};

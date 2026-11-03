@@ -65,6 +65,7 @@ set(CORE_SOURCES
     src/core/MacroRunner.cpp
     src/core/ScreenStructuralAnalyzer.cpp
     src/core/LogIsolatorEngine.cpp
+    src/core/IndFileEngine.cpp
 )
 
 add_library(dx3270_core STATIC ${CORE_SOURCES})
