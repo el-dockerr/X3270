@@ -69,42 +69,109 @@ bool KeyboardState::handleTab(bool backward) {
     return true;
 }
 
+// -----------------------------------------------------------------------------
+// Navigation & Deletion Handlers
+// -----------------------------------------------------------------------------
 bool KeyboardState::handleBackspace() {
     if (isLocked()) return false;
-    int posBefore = screen_.cursorPos();
-    
-    // Record navigation BEFORE the destructive action
-    if (recorder_ && recorder_->isRecording()) {
-        recorder_->recordNavKey(MacroNavCode::Backspace, posBefore);
-    }
-    
-    if (isCurrentFieldEditable()) {
-        int newPos = (screen_.cursorPos() - 1 + screen_.size()) % screen_.size();
-        screen_.setCursor(newPos);
-        screen_.at(newPos).ch = codec_.fromAscii(' '); // Clear character with EBCDIC space
-        screen_.setMDT(newPos); // Set Modified Data Tag
-    } else {
-        lock(LockReason::OErr); // Operator Error if trying to backspace in protected field
+    int pos = screen_.cursorPos();
+    if (!isCurrentFieldEditable()) {
+        lock(LockReason::OErr);
         return false;
     }
+
+    int fa = screen_.findFieldStart(pos);
+    int sz = screen_.size();
+    int firstPos = (fa >= 0) ? (fa + 1) % sz : 0;
+    int lastPos = sz - 1;
+
+    if (fa >= 0) {
+        for (int i = 1; i <= sz; ++i) {
+            int p = (fa + i) % sz;
+            if (screen_.at(p).isFA) {
+                lastPos = (p - 1 + sz) % sz;
+                break;
+            }
+        }
+    }
+
+    // If the cursor is at the first character of the field,
+    // do not move back further! This prevents landing on the attribute (isFA) and locking the keyboard in OErr.
+    if (fa >= 0 && pos == firstPos) {
+        return true; 
+    }
+
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::Backspace, pos);
+    }
+
+    int targetPos = (pos - 1 + sz) % sz;
+    screen_.setCursor(targetPos);
+
+    if (insertMode_) {
+        // In insert mode: delete the character and shift the subsequent text to the left
+        for (int p = targetPos; p != lastPos; p = (p + 1) % sz) {
+            int next = (p + 1) % sz;
+            screen_.at(p).ch        = screen_.at(next).ch;
+            screen_.at(p).fgColor   = screen_.at(next).fgColor;
+            screen_.at(p).bgColor   = screen_.at(next).bgColor;
+            screen_.at(p).highlight = screen_.at(next).highlight;
+        }
+        screen_.at(lastPos).ch        = 0x00; // Inserisce null alla fine del campo
+        screen_.at(lastPos).fgColor   = 0x00;
+        screen_.at(lastPos).bgColor   = 0x00;
+        screen_.at(lastPos).highlight = 0x00;
+    } else {
+        // In overwrite mode: blank out the position
+        screen_.at(targetPos).ch = codec_.fromAscii(' ');
+    }
+
+    screen_.setMDT(targetPos);
+    screen_.markDirty();
     return true;
 }
 
 bool KeyboardState::handleDelete() {
     if (isLocked()) return false;
-    int posBefore = screen_.cursorPos();
-    
-    if (recorder_ && recorder_->isRecording()) {
-        recorder_->recordNavKey(MacroNavCode::Delete, posBefore);
-    }
-    
-    if (isCurrentFieldEditable()) {
-        screen_.at(posBefore).ch = codec_.fromAscii(' ');
-        screen_.setMDT(posBefore);
-    } else {
+    int pos = screen_.cursorPos();
+    if (!isCurrentFieldEditable()) {
         lock(LockReason::OErr);
         return false;
     }
+
+    if (recorder_ && recorder_->isRecording()) {
+        recorder_->recordNavKey(MacroNavCode::Delete, pos);
+    }
+
+    int fa = screen_.findFieldStart(pos);
+    int sz = screen_.size();
+    int lastPos = sz - 1;
+
+    if (fa >= 0) {
+        for (int i = 1; i <= sz; ++i) {
+            int p = (fa + i) % sz;
+            if (screen_.at(p).isFA) {
+                lastPos = (p - 1 + sz) % sz;
+                break;
+            }
+        }
+    }
+
+    // Shift all characters to the left of the cursor
+    for (int p = pos; p != lastPos; p = (p + 1) % sz) {
+        int next = (p + 1) % sz;
+        screen_.at(p).ch        = screen_.at(next).ch;
+        screen_.at(p).fgColor   = screen_.at(next).fgColor;
+        screen_.at(p).bgColor   = screen_.at(next).bgColor;
+        screen_.at(p).highlight = screen_.at(next).highlight;
+    }
+    screen_.at(lastPos).ch        = 0x00;
+    screen_.at(lastPos).fgColor   = 0x00;
+    screen_.at(lastPos).bgColor   = 0x00;
+    screen_.at(lastPos).highlight = 0x00;
+
+    screen_.setMDT(pos);
+    screen_.markDirty();
     return true;
 }
 
@@ -327,21 +394,64 @@ void KeyboardState::moveCursorToFirstUnprotected() {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Data Insertion with Real 3270 Insert Mode Support
+// -----------------------------------------------------------------------------
 bool KeyboardState::insertCharAtCursor(uint8_t ebcdic) {
     if (!isCurrentFieldEditable()) {
         lock(LockReason::OErr);
         return false;
     }
-    
-    // Write exactly at the user's visual cursor, NOT the host's background pointer
+
     int pos = screen_.cursorPos();
-    screen_.at(pos).ch = ebcdic;
-    screen_.setMDT(pos); // Mark field as modified
-    
-    // Advance the visual cursor
-    screen_.setCursor((pos + 1) % screen_.size());
+    int sz = screen_.size();
+    int fa = screen_.findFieldStart(pos);
+    int lastPos = sz - 1;
+
+    if (fa >= 0) {
+        for (int i = 1; i <= sz; ++i) {
+            int p = (fa + i) % sz;
+            if (screen_.at(p).isFA) {
+                lastPos = (p - 1 + sz) % sz;
+                break;
+            }
+        }
+    }
+
+    if (insertMode_) {
+        // Check field saturation (3270 Insert Overflow):
+        // The last character of the field must be null (0x00) or space to allow insertion
+        uint8_t lastCh = screen_.at(lastPos).ch;
+        if (lastCh != 0x00 && lastCh != 0x40 && lastCh != codec_.fromAscii(' ')) {
+            lock(LockReason::OErr); // Field full: standard 3270 keyboard lock
+            return false;
+        }
+
+        // Shift all characters from lastPos backwards to pos to the right
+        for (int p = lastPos; p != pos; p = (p - 1 + sz) % sz) {
+            int prev = (p - 1 + sz) % sz;
+            screen_.at(p).ch        = screen_.at(prev).ch;
+            screen_.at(p).fgColor   = screen_.at(prev).fgColor;
+            screen_.at(p).bgColor   = screen_.at(prev).bgColor;
+            screen_.at(p).highlight = screen_.at(prev).highlight;
+        }
+    }
+
+    // Write the character at the cursor position
+    screen_.at(pos).ch        = ebcdic;
+    screen_.at(pos).fgColor   = 0x00;
+    screen_.at(pos).bgColor   = 0x00;
+    screen_.at(pos).highlight = 0x00;
+    screen_.setMDT(pos);
+
+    // Advance the cursor (if the limit is reached, move to the next field instead of landing on the attribute)
+    if (pos == lastPos) {
+        advanceToNextField(true);
+    } else {
+        screen_.setCursor((pos + 1) % sz);
+    }
+
     screen_.markDirty();
-    
     return true;
 }
 
