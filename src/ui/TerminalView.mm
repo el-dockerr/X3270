@@ -560,10 +560,14 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
         for (int col = 0; col < _cols; ++col) {
             int pos = row * _cols + col;
             const x3270::Cell& cell = _screen->at(pos);
-            
+
+            // Attribute positions are rendered as blanks (background colour only)
             if (cell.isFA) continue;
+
+            // Skip non-display (password) fields — draw nothing
             if (cell.isNonDisplay()) continue;
 
+            // ── UNIFIED COLOR ENGINE (TN3270 & TN5250) ───────────────────────
             NSColor *fg = nil;
             NSColor *bg = (cell.bgColor >= 0xF1 && cell.bgColor <= 0xF7)
                 ? (colorFor3270Code(cell.bgColor) ?: _backgroundColor)
@@ -572,12 +576,11 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
             BOOL is5250Reverse   = NO;
             BOOL is5250Underline = NO;
 
-            // 👉 Dichiarazione a livello di ciclo cella (visibile in tutto il blocco)
+            int faIdx = _screen->findFieldStart(pos);
             uint8_t effectiveHighlight = cell.highlight;
 
             if (_kbd5250 != nil) {
                 // 1. TN5250 EMULATOR COLOR LOGIC
-                int faIdx = _screen->findFieldStart(pos);
                 uint8_t dispAttr = (faIdx >= 0) ? _screen->at(faIdx).fgColor : 0x20;
                 if (dispAttr < 0x20 || dispAttr > 0x3F) dispAttr = 0x20;
 
@@ -592,9 +595,7 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                 is5250Underline = (mod5250 & X5250ModUnderline) != 0;
             } else {
                 // 2. TN3270 EMULATOR COLOR LOGIC
-                int faIdx = _screen->findFieldStart(pos);
-                
-                // A) Foreground Color: eredita dal campo parent se la cella non ha colore
+                // A) Foreground: prevale la cella (SA), altrimenti eredita dal campo (SFE)
                 uint8_t effectiveFg = cell.fgColor;
                 if ((effectiveFg < 0xF1 || effectiveFg > 0xF7) && faIdx >= 0) {
                     effectiveFg = _screen->at(faIdx).fgColor;
@@ -603,7 +604,7 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                     fg = colorFor3270Code(effectiveFg);
                 }
 
-                // B) Background Color: eredita dal campo parent se non definito sulla cella
+                // B) Background: prevale la cella, altrimenti eredita dal campo
                 uint8_t effectiveBg = cell.bgColor;
                 if ((effectiveBg < 0xF1 || effectiveBg > 0xF7) && faIdx >= 0) {
                     effectiveBg = _screen->at(faIdx).bgColor;
@@ -612,17 +613,17 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                     bg = colorFor3270Code(effectiveBg) ?: _backgroundColor;
                 }
 
-                // C) Highlighting: eredita dal campo parent se non presente sulla cella
+                // C) Highlighting: eredita dal campo se la cella non ha override
                 if (effectiveHighlight == 0x00 && faIdx >= 0) {
                     effectiveHighlight = _screen->at(faIdx).highlight;
                 }
-                
-                // Fallback 3270 standard (2-color mode)
+
+                // Fallback standard 3270 a 2 colori
                 if (!fg) {
                     uint8_t activeAttr = (faIdx >= 0) ? _screen->at(faIdx).attr : cell.attr;
                     BOOL isProtected   = (activeAttr & 0x20) != 0;
                     BOOL isIntensified = (activeAttr & 0x08) != 0;
-                    
+
                     if (isProtected) {
                         fg = isIntensified 
                             ? [NSColor colorWithRed:0.85 green:0.85 blue:0.85 alpha:1.0]
@@ -635,7 +636,7 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                 }
             }
 
-            // Reverse Video Highlight (0xF2)
+            // ── Reverse Video Highlight (0xF2) ──────────────────────────────
             if (effectiveHighlight == 0xF2 || is5250Reverse) {
                 NSColor *tmp = fg;
                 fg = bg;
@@ -687,7 +688,7 @@ static NSColor *colorFor5250Attr(uint8_t attr) {
                 [ch drawAtPoint:NSMakePoint(cx, cy + _baseline) withAttributes:charAttrs];
             }
 
-            // Underscore highlight (0xF4)
+            // ── Underscore highlight (0xF4) ───────────────────────────────────
             if (effectiveHighlight == 0xF4 || is5250Underline) {
                 [fg setStroke];
                 NSBezierPath *line = [NSBezierPath bezierPath];

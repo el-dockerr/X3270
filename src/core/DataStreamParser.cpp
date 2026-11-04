@@ -105,11 +105,16 @@ void DataStreamParser::processRecord(const std::vector<uint8_t>& record) {
             break;
         case ParseState::SA_Value:
             // SA (Set Attribute) applies to subsequent characters until field boundary.
-            // Type codes match SFE: 0x42=fg colour, 0x45=bg colour, 0x41=highlight.
-            // A value of 0x00 resets that attribute to the field default.
-            if      (sfeType_ == 0x42) screen_.setCurrentFgColor(b);
-            else if (sfeType_ == 0x45) screen_.setCurrentBgColor(b);
+            // Type 0x00 resets all character attributes to field defaults (essential for ISPF FIND).
+            // Type codes match SFE: 0x41=highlight, 0x42=fg colour, 0x45=bg colour.
+            if (sfeType_ == 0x00) {
+                screen_.setCurrentFgColor(0x00);
+                screen_.setCurrentBgColor(0x00);
+                screen_.setCurrentHighlight(0x00);
+            }
             else if (sfeType_ == 0x41) screen_.setCurrentHighlight(b);
+            else if (sfeType_ == 0x42) screen_.setCurrentFgColor(b);
+            else if (sfeType_ == 0x45) screen_.setCurrentBgColor(b);
             state_ = ParseState::Data;
             break;
         case ParseState::MF_Count:
@@ -290,7 +295,12 @@ void DataStreamParser::handleWSF(const std::vector<uint8_t>& record) {
                 }
             }
             break;
-
+        case 0x40:
+            // ── Read Partition Query (0x40) ──────────────────────────────────
+            if (sendCb_) {
+                sendCb_(buildQueryReply());
+            }
+            break;
         case 0x0D:
             // ── Begin/End of Graphics ─────────────────────────────────────────
             // Signals the start of a new GOCA frame.  Reset parser state so
@@ -349,22 +359,22 @@ std::vector<uint8_t> DataStreamParser::buildQueryReply() const {
     // AID byte: Query Reply (0x88)
     r.push_back(0x88);
 
-    // ── Query Reply (Summary) — SF ID: 0x81, QR Type: 0x81 ──────────────────
-    // Lunghezza 10 byte: 2 (len) + 1 (SF ID) + 1 (QR Type) + 6 codici dichiarati
-    r.push_back(0x00); r.push_back(0x0A); // Length = 10
+    // ── Query Reply (Summary) — SF ID: 0x81, QR Type: 0x80 ──────────────────
+    r.push_back(0x00); r.push_back(0x0B); // Length = 11
     r.push_back(0x81);                    // SF ID: Query Reply
-    r.push_back(0x81);                    // QR Type: Summary
-    r.push_back(0x80);                    // Usable Area
-    r.push_back(0x81);                    // Summary
+    r.push_back(0x80);                    // QR Type: Summary (0x80)
+    r.push_back(0x80);                    // Summary
+    r.push_back(0x81);                    // Usable Area
     r.push_back(0x84);                    // Data Streams (GOCA)
     r.push_back(0x86);                    // Color
     r.push_back(0x87);                    // Highlighting
-    r.push_back(0xA6);                    // Implicit Partition (Necessario per ISPF ADDPOP!)
+    r.push_back(0xA6);                    // Implicit Partition
+    r.push_back(0xD0);                    // File Transfer (IND$FILE)
 
-    // ── Query Reply (Usable Area) — SF ID: 0x81, QR Type: 0x80 ──────────────
+    // ── Query Reply (Usable Area) — SF ID: 0x81, QR Type: 0x81 ──────────────
     r.push_back(0x00); r.push_back(0x13); // Length = 19
     r.push_back(0x81);                    // SF ID: Query Reply
-    r.push_back(0x80);                    // QR Type: Usable Area
+    r.push_back(0x81);                    // QR Type: Usable Area (0x81)
     r.push_back(0x03);                    // Addressing flags: 12-bit & 14-bit
     r.push_back(0x00);                    // Flags (reserved)
     r.push_back(static_cast<uint8_t>(cols >> 8));
@@ -426,7 +436,16 @@ std::vector<uint8_t> DataStreamParser::buildQueryReply() const {
     r.push_back(static_cast<uint8_t>(rows >> 8));
     r.push_back(static_cast<uint8_t>(rows & 0xFF)); // Alternate Height (43)
 
+    // ── Query Reply (File Transfer) — SF ID: 0x81, QR Type: 0xD0 ─────────────
+    r.push_back(0x00); r.push_back(0x0A); // Length = 10
+    r.push_back(0x81);                    // SF ID: Query Reply
+    r.push_back(0xD0);                    // QR Type: File Transfer
+    r.push_back(0x01); r.push_back(0x00); // Version 1.0
+    r.push_back(0x00); r.push_back(0x01); // Type: 3270 FT
+    r.push_back(0x01); r.push_back(0x01); // Buffers
+
     return r;
 }
+
 
 } // namespace x3270
